@@ -14,11 +14,15 @@ const Play = lazy(() => import("./pages/Play.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
-// Simple loading fallback for route transitions
+// Cinematic loading fallback while the 3D bundle opens.
 function RouteLoading() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-pulse text-muted-foreground">Loading...</div>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-[#0b0a08]">
+      <p className="label-cinema text-primary/70">Navodaya</p>
+      <span className="h-px w-24 animate-pulse bg-primary/35" />
+      <p className="font-ui text-[9px] uppercase tracking-[0.3em] text-foreground/30">
+        Opening the gate
+      </p>
     </div>
   );
 }
