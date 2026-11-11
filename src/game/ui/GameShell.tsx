@@ -472,6 +472,7 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
+          data-testid="interaction-prompt"
           className={`absolute left-1/2 -translate-x-1/2 ${state.isTouch ? "bottom-[188px]" : "bottom-10"}`}
         >
           <div className="hud-panel flex items-center gap-3 rounded-sm px-4 py-2.5">

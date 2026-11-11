@@ -70,6 +70,7 @@ export class GameEngine {
   private toastTimer: number | null = null;
   private endingTimer: number | null = null;
   private pointerLockArmed = false;
+  private debugApi: Record<string, unknown> | null = null;
 
   private fpsTime = 0;
   private fpsFrames = 0;
@@ -110,7 +111,7 @@ export class GameEngine {
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.02;
       renderer.shadowMap.enabled = this.quality !== "low";
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
       renderer.domElement.style.display = "block";
       renderer.domElement.style.width = "100%";
       renderer.domElement.style.height = "100%";
@@ -202,6 +203,7 @@ export class GameEngine {
       this.store.setLoad({ status: "ready", progress: 1, stage: "Ready" });
       this.store.setScreen("menu");
       this.store.setMission(this.mission.view());
+      this.installDebugApi();
       this.clock.start();
       this.raf = requestAnimationFrame(this.tick);
     } catch (error) {
@@ -212,6 +214,42 @@ export class GameEngine {
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
+  }
+
+  /**
+   * Development-only hooks used by the automated browser smoke test. They are
+   * stripped from production builds and never expose account or network data.
+   */
+  private installDebugApi(): void {
+    if (!import.meta.env.DEV) return;
+    const engine = this;
+    const api = {
+      teleport(x: number, z: number, rotationY = Math.PI) {
+        engine.player.placeAt(new THREE.Vector3(x, 0, z), rotationY);
+        engine.cameraController.resetToPlayer(engine.player.position, rotationY);
+      },
+      snapshot() {
+        const state = engine.store.getState();
+        return {
+          screen: state.screen,
+          step: engine.mission.stepIndex,
+          done: engine.mission.done,
+          prompt: state.prompt,
+          position: { x: engine.player.position.x, z: engine.player.position.z },
+          camera: { yaw: engine.cameraController.yaw, pitch: engine.cameraController.pitch },
+          ending: Boolean(state.ending),
+        };
+      },
+    };
+    this.debugApi = api;
+    (window as unknown as Record<string, unknown>).__navodaya = api;
+  }
+
+  private removeDebugApi(): void {
+    if (!this.debugApi) return;
+    const host = window as unknown as Record<string, unknown>;
+    if (host.__navodaya === this.debugApi) delete host.__navodaya;
+    this.debugApi = null;
   }
 
   // --------------------------------------------------------------- public API
@@ -520,6 +558,7 @@ export class GameEngine {
     this.audio.dispose();
     this.player.dispose();
     this.world.dispose();
+    this.removeDebugApi();
     this.scene.clear();
     if (this.renderer) {
       this.renderer.dispose();
