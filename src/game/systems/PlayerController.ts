@@ -1,0 +1,174 @@
+import * as THREE from "three";
+import type { CharacterSettings } from "../core/types";
+import { SKIN_TONES, UNIFORM_COLORS } from "../core/types";
+import type { InputController } from "../core/InputController";
+import { createCharacter, setRigSkin, setRigUniform, type CharacterRig } from "../world/CharacterFactory";
+import { damp, shortestAngle } from "../world/geometry";
+import type { BlockCollider } from "../world/WorldEnvironment";
+
+const WALK_SPEED = 3.7;
+const RUN_SPEED = 6.1;
+const GRAVITY = 18;
+const JUMP_VELOCITY = 5.4;
+const PLAYER_RADIUS = 0.38;
+
+export function collidesAt(x: number, z: number, colliders: BlockCollider[]): boolean {
+  for (const collider of colliders) {
+    if (!collider.active) continue;
+    const closestX = Math.max(collider.minX, Math.min(x, collider.maxX));
+    const closestZ = Math.max(collider.minZ, Math.min(z, collider.maxZ));
+    const dx = x - closestX;
+    const dz = z - closestZ;
+    if (dx * dx + dz * dz < PLAYER_RADIUS * PLAYER_RADIUS) return true;
+  }
+  return false;
+}
+
+export class PlayerController {
+  readonly rig: CharacterRig;
+  readonly position = new THREE.Vector3();
+  rotationY = Math.PI;
+  velocityY = 0;
+  grounded = true;
+  moving = false;
+  running = false;
+
+  onFootstep: (() => void) | null = null;
+
+  private walkPhase = 0;
+  private stepTimer = 0;
+
+  constructor(character: CharacterSettings) {
+    this.rig = createCharacter({
+      uniform: UNIFORM_COLORS[character.uniform],
+      skin: SKIN_TONES[character.skin],
+    });
+    this.rig.group.name = "player";
+  }
+
+  setCharacter(character: CharacterSettings): void {
+    setRigUniform(this.rig, UNIFORM_COLORS[character.uniform]);
+    setRigSkin(this.rig, SKIN_TONES[character.skin]);
+  }
+
+  placeAt(position: THREE.Vector3, rotationY: number): void {
+    this.position.set(position.x, Math.max(0, position.y), position.z);
+    this.rotationY = rotationY;
+    this.velocityY = 0;
+    this.grounded = true;
+    this.rig.group.position.copy(this.position);
+    this.rig.group.rotation.y = rotationY;
+  }
+
+  /** Drops the player back at the main gate facing the campus. */
+  resetToSpawn(spawn: THREE.Vector3): void {
+    this.placeAt(spawn, Math.PI);
+  }
+
+  update(
+    dt: number,
+    input: InputController,
+    cameraYaw: number,
+    colliders: BlockCollider[],
+    bounds: number,
+  ): void {
+    const move = input.getMove();
+    const magnitude = Math.min(1, Math.hypot(move.x, move.y));
+    const wantedSpeed = magnitude * (input.running ? RUN_SPEED : WALK_SPEED);
+
+    const forwardX = -Math.sin(cameraYaw);
+    const forwardZ = -Math.cos(cameraYaw);
+    const rightX = Math.cos(cameraYaw);
+    const rightZ = -Math.sin(cameraYaw);
+
+    let dirX = forwardX * move.y + rightX * move.x;
+    let dirZ = forwardZ * move.y + rightZ * move.x;
+    const dirLength = Math.hypot(dirX, dirZ);
+    if (dirLength > 0.0001) {
+      dirX /= dirLength;
+      dirZ /= dirLength;
+    }
+
+    this.moving = magnitude > 0.08;
+    this.running = this.moving && input.running;
+
+    if (input.consumeJump() && this.grounded) {
+      this.velocityY = JUMP_VELOCITY;
+      this.grounded = false;
+    }
+
+    this.velocityY -= GRAVITY * dt;
+    this.position.y += this.velocityY * dt;
+    if (this.position.y <= 0) {
+      this.position.y = 0;
+      this.velocityY = 0;
+      this.grounded = true;
+    }
+
+    // Axis-separated movement gives natural wall sliding.
+    const stepX = dirX * wantedSpeed * dt;
+    const stepZ = dirZ * wantedSpeed * dt;
+    if (stepX !== 0) {
+      const nextX = THREE.MathUtils.clamp(this.position.x + stepX, -bounds, bounds);
+      if (!collidesAt(nextX, this.position.z, colliders)) this.position.x = nextX;
+    }
+    if (stepZ !== 0) {
+      const nextZ = THREE.MathUtils.clamp(this.position.z + stepZ, -bounds, bounds);
+      if (!collidesAt(this.position.x, nextZ, colliders)) this.position.z = nextZ;
+    }
+
+    if (this.moving) {
+      const targetRotation = Math.atan2(dirX, dirZ);
+      this.rotationY += shortestAngle(this.rotationY, targetRotation) * Math.min(1, dt * 12);
+    }
+
+    this.rig.group.position.copy(this.position);
+    this.rig.group.rotation.y = this.rotationY;
+    this.animate(dt, wantedSpeed);
+  }
+
+  private animate(dt: number, speed: number): void {
+    const rig = this.rig;
+    const intensity = Math.min(1, speed / RUN_SPEED);
+    if (this.moving) {
+      this.walkPhase += dt * (6 + intensity * 6);
+      const swing = Math.sin(this.walkPhase) * (0.35 + intensity * 0.45);
+      rig.leftLeg.rotation.x = swing;
+      rig.rightLeg.rotation.x = -swing;
+      rig.leftArm.rotation.x = -swing * 0.8;
+      rig.rightArm.rotation.x = swing * 0.8;
+      rig.torso.rotation.y = Math.sin(this.walkPhase) * 0.05;
+      rig.group.position.y = this.position.y + Math.abs(Math.sin(this.walkPhase)) * 0.035 * intensity;
+      rig.head.rotation.z = Math.sin(this.walkPhase) * 0.015;
+      this.stepTimer -= dt * (this.running ? 1.7 : 1);
+      if (this.stepTimer <= 0) {
+        this.stepTimer = 0.34;
+        this.onFootstep?.();
+      }
+    } else {
+      rig.leftLeg.rotation.x = damp(rig.leftLeg.rotation.x, 0, 8, dt);
+      rig.rightLeg.rotation.x = damp(rig.rightLeg.rotation.x, 0, 8, dt);
+      rig.leftArm.rotation.x = damp(rig.leftArm.rotation.x, 0, 8, dt);
+      rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, 0, 8, dt);
+      rig.torso.rotation.y = damp(rig.torso.rotation.y, 0, 8, dt);
+      this.walkPhase = 0;
+      this.stepTimer = 0;
+    }
+
+    if (!this.grounded) {
+      const tuck = Math.min(0.55, Math.abs(this.velocityY) * 0.04);
+      rig.leftLeg.rotation.x = damp(rig.leftLeg.rotation.x, 0.5, 10, dt);
+      rig.rightLeg.rotation.x = damp(rig.rightLeg.rotation.x, 0.3, 10, dt);
+      rig.leftArm.rotation.x = damp(rig.leftArm.rotation.x, -0.6 - tuck, 10, dt);
+      rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, -0.6 - tuck, 10, dt);
+    }
+
+    rig.head.rotation.y = damp(rig.head.rotation.y, 0, 6, dt);
+  }
+
+  dispose(): void {
+    this.rig.group.traverse((object) => {
+      if (object instanceof THREE.Mesh) object.geometry.dispose();
+    });
+  }
+}
