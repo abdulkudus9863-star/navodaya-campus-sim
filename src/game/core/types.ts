@@ -1,11 +1,22 @@
 /**
  * Shared game types. These are deliberately engine-agnostic so React UI can
- * render state without importing three.js.
+ * render state without importing three.js. House IDs are the only domain types
+ * that cross from the data layer into the save format.
  */
+import type { GardenItemId } from "../data/night";
+import type { HouseId } from "../data/houses";
 
 export type Quality = "low" | "medium" | "high";
 
-export type Screen = "menu" | "playing" | "paused" | "dialogue" | "notice" | "ending";
+export type Screen =
+  | "menu"
+  | "creation"
+  | "playing"
+  | "paused"
+  | "dialogue"
+  | "notice"
+  | "ending"
+  | "night-result";
 
 export interface GameSettings {
   quality: Quality;
@@ -17,6 +28,7 @@ export interface GameSettings {
 }
 
 export interface CharacterSettings {
+  /** Retained for save compatibility. The vest colour is taken from the house. */
   uniform: "navy" | "olive" | "maroon";
   skin: 0 | 1 | 2 | 3;
 }
@@ -33,14 +45,37 @@ export interface MissionSave {
   completed: string[];
 }
 
+export interface PlayerProfileSave {
+  playerId: string;
+  characterId: string;
+  houseId: HouseId;
+  assignedAt: number;
+  xp: number;
+  level: number;
+  achievements: string[];
+}
+
+export interface NightSave {
+  active: boolean;
+  started: boolean;
+  step: number;
+  collected: GardenItemId[];
+  attempts: number;
+  caught: boolean;
+  success: boolean;
+  completedAt: number | null;
+}
+
 export interface SaveData {
-  version: 1;
+  version: 2;
   savedAt: number;
   playtime: number;
   player: { position: Vec3Save; rotationY: number };
   settings: GameSettings;
   character: CharacterSettings;
   mission: MissionSave;
+  profile: PlayerProfileSave;
+  night: NightSave;
 }
 
 export interface DialogueChoice {
@@ -86,6 +121,46 @@ export interface MissionView {
   done: boolean;
 }
 
+export interface PlayerProfileView {
+  playerId: string;
+  characterId: string;
+  characterName: string;
+  houseId: HouseId;
+  houseName: string;
+  houseColor: string;
+  className: string;
+  xp: number;
+  level: number;
+  achievements: string[];
+  assignedAt: number;
+}
+
+export interface NightView {
+  active: boolean;
+  step: number;
+  total: number;
+  title: string;
+  objective: string;
+  hint: string;
+  collected: GardenItemId[];
+  suspicion: number;
+  hidden: boolean;
+  caught: boolean;
+  attempts: number;
+  completedOnce: boolean;
+}
+
+export interface NightResultView {
+  outcome: "success" | "caught";
+  title: string;
+  message: string;
+  xpAwarded: number;
+  rewardAlreadyClaimed: boolean;
+  achievementId: string | null;
+  collected: GardenItemId[];
+  attempts: number;
+}
+
 export interface LoadState {
   status: "idle" | "loading" | "ready" | "error";
   progress: number;
@@ -96,6 +171,7 @@ export interface LoadState {
 export interface GameUIState {
   screen: Screen;
   settingsOpen: boolean;
+  profileOpen: boolean;
   load: LoadState;
   mission: MissionView;
   dialogue: DialogueView | null;
@@ -103,6 +179,10 @@ export interface GameUIState {
   prompt: string | null;
   settings: GameSettings;
   character: CharacterSettings;
+  profile: PlayerProfileView | null;
+  night: NightView | null;
+  nightResult: NightResultView | null;
+  crouching: boolean;
   hasSave: boolean;
   saveBusy: boolean;
   toast: string | null;
@@ -139,8 +219,8 @@ export const MISSION_STEPS: MissionStep[] = [
   {
     id: "hostel",
     title: "Report to your room",
-    objective: "Enter your hostel room",
-    hint: "The hostel is east of the assembly ground.",
+    objective: "Enter your house hostel",
+    hint: "Four house hostels stand along the south lawn. Yours has your colours over the door.",
   },
 ];
 
@@ -157,6 +237,8 @@ export const DEFAULT_CHARACTER: CharacterSettings = {
   uniform: "navy",
   skin: 1,
 };
+
+export const PLAYER_CLASS = "VII";
 
 export const UNIFORM_COLORS: Record<CharacterSettings["uniform"], string> = {
   navy: "#243352",
@@ -176,5 +258,18 @@ export function initialMission(): MissionView {
     total: MISSION_STEPS.length,
     completed: [],
     done: false,
+  };
+}
+
+export function emptyNightSave(): NightSave {
+  return {
+    active: false,
+    started: false,
+    step: 0,
+    collected: [],
+    attempts: 0,
+    caught: false,
+    success: false,
+    completedAt: null,
   };
 }

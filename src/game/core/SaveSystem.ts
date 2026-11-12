@@ -2,16 +2,25 @@ import {
   DEFAULT_CHARACTER,
   DEFAULT_SETTINGS,
   MISSION_STEPS,
+  emptyNightSave,
   type CharacterSettings,
   type GameSettings,
+  type NightSave,
+  type PlayerProfileSave,
   type Quality,
   type SaveData,
 } from "./types";
+import { levelFromXp, validAchievementIds } from "../data/achievements";
+import { DEFAULT_CHARACTER_ID, DEFAULT_HOUSE_ID, isHouseId } from "../data/houses";
+import { GARDEN_ITEM_IDS, NIGHT_TOTAL_STEPS, isGardenItemId } from "../data/night";
+import { newPlayerProfile } from "../data/profile";
+import { getStudent, validateCharacterSelection } from "../data/students";
 
 const KEY = "navodaya.campus.save.v1";
 const QUALITIES: Quality[] = ["low", "medium", "high"];
 const UNIFORMS: CharacterSettings["uniform"][] = ["navy", "olive", "maroon"];
 const WORLD_LIMIT = 70;
+const MAX_XP = 1_000_000;
 
 type LoadResult =
   | { ok: true; data: SaveData }
@@ -46,8 +55,73 @@ export function sanitizeCharacter(raw: unknown): CharacterSettings {
       ? (source.uniform as CharacterSettings["uniform"])
       : DEFAULT_CHARACTER.uniform,
     skin: ([0, 1, 2, 3] as const).includes(source.skin as 0)
-      ? (source.skin as CharacterSettings["skin"])
+      ? (source.skin as 0 | 1 | 2 | 3)
       : DEFAULT_CHARACTER.skin,
+  };
+}
+
+function sanitizeNight(raw: unknown, missionDone: boolean): NightSave {
+  const source = (raw ?? {}) as Partial<NightSave>;
+  const fallback = emptyNightSave();
+  if (!missionDone) return fallback;
+  const collectedRaw = Array.isArray(source.collected) ? source.collected : [];
+  const collected = Array.from(
+    new Set(collectedRaw.filter((id): id is (typeof GARDEN_ITEM_IDS)[number] => isGardenItemId(id))),
+  );
+  const success = source.success === true;
+  const caught = source.caught === true;
+  const active = source.active === true && !success && !caught;
+  let step = clamp(Math.floor(num(source.step, 0)), 0, NIGHT_TOTAL_STEPS);
+  if (active && step === NIGHT_TOTAL_STEPS && collected.length < GARDEN_ITEM_IDS.length) {
+    step = NIGHT_TOTAL_STEPS - 1;
+  }
+  return {
+    active,
+    started: source.started === true || active || success || caught,
+    step,
+    collected: caught ? [] : collected,
+    attempts: clamp(Math.floor(num(source.attempts, 0)), 0, 999),
+    caught,
+    success,
+    completedAt: Number.isFinite(source.completedAt) ? (source.completedAt as number) : null,
+  };
+}
+
+function sanitizeProfile(
+  raw: unknown,
+  version: number,
+  savedAt: number,
+  missionDone: boolean,
+): PlayerProfileSave | null {
+  if (version === 1) {
+    // Preserve a Phase 1 save without forcing the player through creation again.
+    return newPlayerProfile(DEFAULT_CHARACTER_ID, DEFAULT_HOUSE_ID, {
+      assignedAt: savedAt,
+      xp: missionDone ? 120 : 0,
+      achievements: missionDone ? ["first-day"] : [],
+    });
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const source = raw as Partial<PlayerProfileSave>;
+  if (typeof source.playerId !== "string" || source.playerId.length < 4 || source.playerId.length > 80) {
+    return null;
+  }
+  if (typeof source.characterId !== "string" || typeof source.houseId !== "string") return null;
+  if (!isHouseId(source.houseId)) return null;
+  const validation = validateCharacterSelection(source.characterId, source.houseId);
+  if (!validation.ok) return null;
+  if (!getStudent(source.characterId)) return null;
+  const xp = clamp(Math.floor(num(source.xp, 0)), 0, MAX_XP);
+  const achievements = validAchievementIds(source.achievements);
+  if (!achievements.includes("house-colours")) achievements.push("house-colours");
+  return {
+    playerId: source.playerId,
+    characterId: source.characterId,
+    houseId: source.houseId,
+    assignedAt: clamp(num(source.assignedAt, savedAt), 0, 8_640_000_000_000_000),
+    xp,
+    level: levelFromXp(xp),
+    achievements,
   };
 }
 
@@ -55,7 +129,8 @@ export function sanitizeCharacter(raw: unknown): CharacterSettings {
 function sanitizeSave(raw: unknown): SaveData | null {
   if (!raw || typeof raw !== "object") return null;
   const source = raw as Record<string, unknown>;
-  if (source.version !== 1) return null;
+  const version = source.version === 1 ? 1 : source.version === 2 ? 2 : null;
+  if (!version) return null;
 
   const player = source.player as Record<string, unknown> | undefined;
   if (!player || typeof player !== "object") return null;
@@ -75,13 +150,22 @@ function sanitizeSave(raw: unknown): SaveData | null {
     (id): id is string => typeof id === "string" && validIds.has(id),
   );
   const step = clamp(Math.floor(num(mission.step, completed.length)), 0, MISSION_STEPS.length);
+  const missionDone = completed.length >= MISSION_STEPS.length;
+
+  const savedAt = num(source.savedAt, Date.now());
+  const profile = sanitizeProfile(source.profile, version, savedAt, missionDone);
+  if (!profile) return null;
 
   return {
-    version: 1,
-    savedAt: num(source.savedAt, Date.now()),
+    version: 2,
+    savedAt,
     playtime: clamp(num(source.playtime, 0), 0, 60 * 60 * 100),
     player: {
-      position: { x: clamp(x, -WORLD_LIMIT, WORLD_LIMIT), y: clamp(y, 0, 8), z: clamp(z, -WORLD_LIMIT, WORLD_LIMIT) },
+      position: {
+        x: clamp(x, -WORLD_LIMIT, WORLD_LIMIT),
+        y: clamp(y, 0, 8),
+        z: clamp(z, -WORLD_LIMIT, WORLD_LIMIT),
+      },
       rotationY: num(player.rotationY, 0),
     },
     settings: sanitizeSettings(source.settings),
@@ -91,6 +175,8 @@ function sanitizeSave(raw: unknown): SaveData | null {
       step,
       completed,
     },
+    profile,
+    night: sanitizeNight(source.night, missionDone),
   };
 }
 
@@ -119,8 +205,8 @@ export class SaveSystem {
       const parsed: unknown = JSON.parse(raw);
       const data = sanitizeSave(parsed);
       if (!data) {
-        // A half-valid file is discarded so a corrupt save can never trap the
-        // player in a broken world.
+        // A malformed profile or impossible house assignment is rejected at the
+        // boundary rather than silently repaired into a different character.
         window.localStorage.removeItem(KEY);
         return { ok: false, reason: "corrupt" };
       }
