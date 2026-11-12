@@ -38,6 +38,23 @@ export function validAchievementIds(ids: unknown): string[] {
   );
 }
 
+/**
+ * XP is only ever awarded alongside a first-time achievement. Keeping the
+ * mapping here lets the save boundary cap a tampered XP value to the rewards
+ * the profile actually holds. This is local-save hardening, not a substitute
+ * for server authority in a multiplayer build.
+ */
+export const ACHIEVEMENT_XP: Record<string, number> = {
+  "house-colours": 0,
+  "first-day": 120,
+  "midnight-garden": 60,
+  "caught-in-the-act": 0,
+};
+
+export function maxXpForAchievements(ids: readonly string[]): number {
+  return ids.reduce((total, id) => total + (ACHIEVEMENT_XP[id] ?? 0), 0);
+}
+
 export const XP_PER_LEVEL = 100;
 
 export function levelFromXp(xp: number): number {

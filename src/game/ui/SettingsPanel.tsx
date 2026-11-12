@@ -2,19 +2,14 @@ import { motion } from "framer-motion";
 import { Check, X } from "lucide-react";
 import type { GameEngine } from "../core/GameEngine";
 import type { GameUIState, Quality } from "../core/types";
-import { SKIN_TONES, UNIFORM_COLORS } from "../core/types";
+import { SKIN_TONES } from "../core/types";
+import { getHouse } from "../data/houses";
 
 const QUALITY_NOTES: Record<Quality, string> = {
   low: "Fastest — small shadows off, 512px shadow map",
   medium: "Balanced — 1024px shadows, reduced pixel ratio",
   high: "Cinematic — 2048px shadows, full resolution",
 };
-
-const UNIFORMS: Array<{ key: keyof typeof UNIFORM_COLORS; label: string }> = [
-  { key: "navy", label: "Navy" },
-  { key: "olive", label: "Olive" },
-  { key: "maroon", label: "Maroon" },
-];
 
 function Toggle({
   checked,
@@ -65,6 +60,7 @@ export function SettingsPanel({
   onClose: () => void;
 }) {
   const settings = state.settings;
+  const house = state.profile ? getHouse(state.profile.houseId) : null;
 
   return (
     <div className="absolute inset-0 z-40 flex justify-end bg-black/60 backdrop-blur-[3px]">
@@ -182,8 +178,8 @@ export function SettingsPanel({
             <Toggle
               checked={settings.music}
               onChange={(music) => engine?.setSettings({ ...settings, music })}
-              label="Ambience and birdsong"
-              description="Procedural wind, distant birdsong and a quiet courtyard drone."
+              label="Ambience and night sounds"
+              description="Procedural wind, birdsong by day and crickets after lights-out."
             />
             <Toggle
               checked={settings.sfx}
@@ -196,35 +192,23 @@ export function SettingsPanel({
           <section className="py-6">
             <p className="label-cinema text-primary/80">Your character</p>
             <p className="mt-2 font-ui text-xs leading-relaxed text-muted-foreground">
-              Uniform and skin tone update the character you walk around as.
+              Your uniform takes its colour from your house assignment. Skin tone remains yours.
             </p>
-            <div className="mt-5">
-              <p className="font-ui text-xs text-foreground/80">House uniform</p>
-              <div className="mt-3 flex flex-wrap gap-2.5">
-                {UNIFORMS.map((uniform) => {
-                  const active = state.character.uniform === uniform.key;
-                  return (
-                    <button
-                      key={uniform.key}
-                      type="button"
-                      onClick={() =>
-                        engine?.setCharacter({ ...state.character, uniform: uniform.key })
-                      }
-                      aria-pressed={active}
-                      className={`flex items-center gap-2 rounded-sm border px-3 py-2 font-ui text-xs transition ${
-                        active
-                          ? "border-primary/70 text-foreground"
-                          : "border-foreground/12 text-foreground/65 hover:border-foreground/30"
-                      }`}
-                    >
-                      <span
-                        className="size-3.5 rounded-full border border-white/25"
-                        style={{ backgroundColor: UNIFORM_COLORS[uniform.key] }}
-                      />
-                      {uniform.label}
-                    </button>
-                  );
-                })}
+            <div className="mt-5 rounded-sm border border-foreground/12 bg-black/25 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-ui text-xs text-foreground/80">House uniform</p>
+                  <p className="mt-1 font-ui text-[10px] leading-relaxed text-muted-foreground">
+                    {house
+                      ? `${house.name} · colour set by your confirmed house`
+                      : "Choose a house in New Game to set your uniform."}
+                  </p>
+                </div>
+                <span
+                  className="size-6 shrink-0 rounded-full border border-white/25"
+                  style={{ backgroundColor: house?.color ?? "#44523c" }}
+                  aria-label={house ? `${house.name} uniform colour` : "No house colour"}
+                />
               </div>
             </div>
             <div className="mt-5">

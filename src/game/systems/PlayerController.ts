@@ -8,6 +8,7 @@ import type { BlockCollider } from "../world/WorldEnvironment";
 
 const WALK_SPEED = 3.7;
 const RUN_SPEED = 6.1;
+const CROUCH_SPEED = 1.85;
 const GRAVITY = 18;
 const JUMP_VELOCITY = 5.4;
 const PLAYER_RADIUS = 0.38;
@@ -32,23 +33,38 @@ export class PlayerController {
   grounded = true;
   moving = false;
   running = false;
+  crouching = false;
+  currentSpeed = 0;
+  private houseColor: string;
 
   onFootstep: (() => void) | null = null;
 
   private walkPhase = 0;
   private stepTimer = 0;
 
-  constructor(character: CharacterSettings) {
+  constructor(character: CharacterSettings, houseColor?: string) {
+    this.houseColor = houseColor ?? UNIFORM_COLORS[character.uniform];
     this.rig = createCharacter({
-      uniform: UNIFORM_COLORS[character.uniform],
+      uniform: this.houseColor,
       skin: SKIN_TONES[character.skin],
     });
     this.rig.group.name = "player";
   }
 
-  setCharacter(character: CharacterSettings): void {
-    setRigUniform(this.rig, UNIFORM_COLORS[character.uniform]);
+  setCharacter(character: CharacterSettings, houseColor: string = this.houseColor): void {
+    this.houseColor = houseColor;
+    setRigUniform(this.rig, houseColor);
     setRigSkin(this.rig, SKIN_TONES[character.skin]);
+  }
+
+  setCrouching(crouching: boolean): void {
+    this.crouching = crouching;
+    if (crouching) this.running = false;
+  }
+
+  setHouseColor(color: string): void {
+    this.houseColor = color;
+    setRigUniform(this.rig, color);
   }
 
   placeAt(position: THREE.Vector3, rotationY: number): void {
@@ -74,7 +90,9 @@ export class PlayerController {
   ): void {
     const move = input.getMove();
     const magnitude = Math.min(1, Math.hypot(move.x, move.y));
-    const wantedSpeed = magnitude * (input.running ? RUN_SPEED : WALK_SPEED);
+    const baseSpeed = this.crouching ? CROUCH_SPEED : input.running ? RUN_SPEED : WALK_SPEED;
+    const wantedSpeed = magnitude * baseSpeed;
+    this.currentSpeed = wantedSpeed;
 
     const forwardX = -Math.sin(cameraYaw);
     const forwardZ = -Math.cos(cameraYaw);
@@ -90,7 +108,7 @@ export class PlayerController {
     }
 
     this.moving = magnitude > 0.08;
-    this.running = this.moving && input.running;
+    this.running = this.moving && input.running && !this.crouching;
 
     if (input.consumeJump() && this.grounded) {
       this.velocityY = JUMP_VELOCITY;
@@ -124,6 +142,8 @@ export class PlayerController {
 
     this.rig.group.position.copy(this.position);
     this.rig.group.rotation.y = this.rotationY;
+    const crouchScale = this.crouching ? 0.78 : 1;
+    this.rig.group.scale.y = damp(this.rig.group.scale.y, crouchScale, 10, dt);
     this.animate(dt, wantedSpeed);
   }
 

@@ -13,6 +13,7 @@ export class InteractionSystem {
     let nearest: WorldInteractable | null = null;
     let nearestDistance = Number.POSITIVE_INFINITY;
     for (const interactable of this.world.interactables) {
+      if (interactable.active === false) continue;
       const dx = playerPosition.x - interactable.position.x;
       const dz = playerPosition.z - interactable.position.z;
       const distance = Math.hypot(dx, dz);
@@ -37,6 +38,12 @@ export class InteractionSystem {
         return "Read the notice board";
       case "door":
         return interactable.door ? interactable.door.prompt : "Open the door";
+      case "student":
+        return `Talk to ${interactable.label}`;
+      case "roommate":
+        return "Talk to your roommate";
+      case "garden":
+        return `Pick ${interactable.label.toLowerCase()}`;
       default:
         return "Interact";
     }

@@ -1,4 +1,4 @@
-import { ArrowUp, Hand } from "lucide-react";
+import { ArrowUp, Footprints, Hand } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { GameEngine } from "../core/GameEngine";
@@ -6,9 +6,11 @@ import type { GameEngine } from "../core/GameEngine";
 export function MobileControls({
   engine,
   promptActive,
+  crouching,
 }: {
   engine: GameEngine | null;
   promptActive: boolean;
+  crouching: boolean;
 }) {
   const baseRef = useRef<HTMLDivElement>(null);
   const joystickPointer = useRef<number | null>(null);
@@ -120,7 +122,25 @@ export function MobileControls({
           <span className="absolute -top-6 left-0 label-cinema text-[9px] text-foreground/45">Move</span>
         </div>
 
-        <div className="pointer-events-auto flex items-end gap-3 sm:gap-4">
+        <div className="pointer-events-auto flex items-end gap-2 sm:gap-3">
+          <button
+            type="button"
+            aria-label="Crouch"
+            aria-pressed={crouching}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              engine?.toggleCrouch();
+            }}
+            className={`flex size-[52px] flex-col items-center justify-center gap-1 rounded-full border backdrop-blur-sm transition active:scale-95 ${
+              crouching
+                ? "border-[#9fc5a8]/80 bg-[#5f9b6e]/25 text-[#d7f0da]"
+                : "border-[#e7d3a8]/22 bg-black/35 text-foreground/55"
+            }`}
+          >
+            <Footprints className="size-4" strokeWidth={1.6} />
+            <span className="label-cinema text-[7px]">Crouch</span>
+          </button>
           <button
             type="button"
             aria-label="Jump"
@@ -129,10 +149,10 @@ export function MobileControls({
               event.stopPropagation();
               engine?.jump();
             }}
-            className="flex size-[62px] flex-col items-center justify-center gap-1 rounded-full border border-[#e7d3a8]/30 bg-black/40 text-foreground/80 backdrop-blur-sm transition active:scale-95 active:border-[#e7c98f] active:text-[#f0ddb4]"
+            className="flex size-[58px] flex-col items-center justify-center gap-1 rounded-full border border-[#e7d3a8]/30 bg-black/40 text-foreground/80 backdrop-blur-sm transition active:scale-95 active:border-[#e7c98f] active:text-[#f0ddb4]"
           >
             <ArrowUp className="size-5" strokeWidth={1.6} />
-            <span className="label-cinema text-[8px]">Jump</span>
+            <span className="label-cinema text-[7px]">Jump</span>
           </button>
           <button
             type="button"
@@ -143,14 +163,14 @@ export function MobileControls({
               event.stopPropagation();
               engine?.interact();
             }}
-            className={`flex size-[76px] flex-col items-center justify-center gap-1 rounded-full border backdrop-blur-sm transition active:scale-95 ${
+            className={`flex size-[72px] flex-col items-center justify-center gap-1 rounded-full border backdrop-blur-sm transition active:scale-95 ${
               promptActive
                 ? "border-[#e7c98f]/80 bg-[#d9b877]/25 text-[#f6e6c4] shadow-[0_0_32px_rgba(217,184,119,0.35)]"
                 : "border-[#e7d3a8]/20 bg-black/30 text-foreground/35"
             }`}
           >
             <Hand className="size-5" strokeWidth={1.6} />
-            <span className="label-cinema text-[8px]">Interact</span>
+            <span className="label-cinema text-[7px]">Interact</span>
           </button>
         </div>
       </div>

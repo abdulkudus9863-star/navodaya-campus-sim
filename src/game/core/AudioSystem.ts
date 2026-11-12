@@ -14,6 +14,8 @@ export class AudioSystem {
   private started = false;
   private droneNodes: OscillatorNode[] = [];
   private birdTimer = 2.2;
+  private night = false;
+  private cricketTimer = 0.4;
 
   async unlock(): Promise<void> {
     if (this.started) {
@@ -83,6 +85,12 @@ export class AudioSystem {
     });
   }
 
+  setNight(night: boolean): void {
+    this.night = night;
+    this.birdTimer = 0.6;
+    this.cricketTimer = 0.25;
+  }
+
   setSettings(settings: GameSettings): void {
     this.settings = settings;
     if (this.ctx && this.master && this.musicGain && this.sfxGain) {
@@ -95,10 +103,37 @@ export class AudioSystem {
 
   update(dt: number): void {
     if (!this.started || !this.ctx || !this.settings.music) return;
+    if (this.night) {
+      this.cricketTimer -= dt;
+      if (this.cricketTimer <= 0) {
+        this.cricketTimer = 0.8 + Math.random() * 2.2;
+        this.cricket();
+      }
+      return;
+    }
     this.birdTimer -= dt;
     if (this.birdTimer <= 0) {
       this.birdTimer = 4 + Math.random() * 9;
       this.chirp();
+    }
+  }
+
+  private cricket(): void {
+    const context = this.ctx;
+    if (!context || !this.musicGain) return;
+    const start = context.currentTime + Math.random() * 0.05;
+    const base = 3000 + Math.random() * 900;
+    for (let i = 0; i < 3; i += 1) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "triangle";
+      oscillator.frequency.setValueAtTime(base, start + i * 0.065);
+      gain.gain.setValueAtTime(0.0001, start + i * 0.065);
+      gain.gain.exponentialRampToValueAtTime(0.018, start + i * 0.065 + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + i * 0.065 + 0.045);
+      oscillator.connect(gain).connect(this.musicGain);
+      oscillator.start(start + i * 0.065);
+      oscillator.stop(start + i * 0.065 + 0.06);
     }
   }
 

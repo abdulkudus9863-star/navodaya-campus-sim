@@ -1,7 +1,7 @@
 import type { DialogueNode, DialogueView } from "../core/types";
 
 const SPEAKER = "Meera";
-const ROLE = "Senior · Ravi House";
+const ROLE = "Senior · Nilgiri House";
 
 export interface DialogueContext {
   step: number;

@@ -4,15 +4,22 @@ import {
   ChevronRight,
   Clock,
   CornerDownLeft,
+  Eye,
+  EyeOff,
+  Footprints,
   Gauge,
   Keyboard,
+  Leaf,
   Loader2,
   LogOut,
+  Moon,
   Mouse,
   Pause,
   Play,
   RotateCcw,
+  Shield,
   Smartphone,
+  UserRound,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -20,7 +27,12 @@ import { GameEngine } from "../core/GameEngine";
 import { GameStore, useGameState } from "../core/GameStore";
 import { SaveSystem } from "../core/SaveSystem";
 import { DEFAULT_SETTINGS, type GameUIState } from "../core/types";
+import { getHouse } from "../data/houses";
+import { CharacterCreation } from "./CharacterCreation";
+import { HouseEmblem } from "./HouseVisuals";
 import { MobileControls } from "./MobileControls";
+import { NightResultOverlay } from "./NightResult";
+import { ProfilePanel } from "./ProfilePanel";
 import { SettingsPanel } from "./SettingsPanel";
 
 function detectTouch(): boolean {
@@ -66,11 +78,13 @@ export function GameShell() {
 
   const ready = state.load.status === "ready";
   const inGame =
+    state.screen === "creation" ||
     state.screen === "playing" ||
     state.screen === "paused" ||
     state.screen === "dialogue" ||
     state.screen === "notice" ||
-    state.screen === "ending";
+    state.screen === "ending" ||
+    state.screen === "night-result";
 
   return (
     <div className="relative h-[100dvh] w-full select-none overflow-hidden bg-[#0a0907] font-ui text-foreground">
@@ -89,6 +103,10 @@ export function GameShell() {
         />
       )}
 
+      {ready && state.screen === "creation" && !state.settingsOpen && (
+        <CharacterCreation engine={engine} />
+      )}
+
       {ready && state.screen === "menu" && !state.settingsOpen && (
         <MainMenu state={state} engine={engine} />
       )}
@@ -96,7 +114,13 @@ export function GameShell() {
       {ready && state.screen === "playing" && !state.settingsOpen && (
         <>
           <Hud state={state} engine={engine} />
-          {state.isTouch && <MobileControls engine={engine} promptActive={Boolean(state.prompt)} />}
+          {state.isTouch && (
+            <MobileControls
+              engine={engine}
+              promptActive={Boolean(state.prompt)}
+              crouching={state.crouching}
+            />
+          )}
         </>
       )}
 
@@ -114,6 +138,14 @@ export function GameShell() {
 
       {ready && state.screen === "ending" && state.ending && (
         <EndingOverlay state={state} engine={engine} />
+      )}
+
+      {ready && state.screen === "night-result" && state.nightResult && (
+        <NightResultOverlay state={state} engine={engine} />
+      )}
+
+      {ready && state.profileOpen && state.profile && (
+        <ProfilePanel state={state} engine={engine} />
       )}
 
       {ready && state.settingsOpen && (
@@ -239,6 +271,8 @@ function MenuRow({
 function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | null }) {
   const [confirmNew, setConfirmNew] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const profile = state.profile;
+  const house = profile ? getHouse(profile.houseId) : null;
 
   return (
     <div className="film-grain absolute inset-0 z-20 overflow-y-auto">
@@ -259,9 +293,9 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
             </div>
           </div>
           <div className="text-right">
-            <p className="label-cinema text-primary/70">Phase One</p>
+            <p className="label-cinema text-primary/70">Term II</p>
             <p className="mt-1 font-ui text-[10px] uppercase tracking-[0.22em] text-foreground/40">
-              Playable prototype
+              Houses · Night life
             </p>
           </div>
         </header>
@@ -285,6 +319,26 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
               prove — and a whole term ahead of you.
             </p>
 
+            {profile && house && (
+              <button
+                type="button"
+                onClick={() => engine?.openProfile()}
+                aria-label="Open player profile"
+                className="mt-6 flex w-full max-w-md items-center gap-3 border border-foreground/12 bg-black/25 px-3.5 py-3 text-left transition hover:border-primary/40 hover:bg-black/35"
+              >
+                <HouseEmblem houseId={house.id} size={34} />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-display text-lg leading-tight text-[#f2e7d2]">
+                    {profile.characterName}
+                  </span>
+                  <span className="mt-0.5 block font-ui text-[9px] uppercase tracking-[0.18em] text-foreground/40">
+                    {house.name} · Class {profile.className} · Level {profile.level}
+                  </span>
+                </span>
+                <ChevronRight className="size-3.5 shrink-0 text-foreground/30" />
+              </button>
+            )}
+
             <div className="mt-8 max-w-md">
               {confirmNew ? (
                 <motion.div
@@ -294,7 +348,7 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
                 >
                   <p className="font-display text-xl text-foreground">Start a new day?</p>
                   <p className="mt-2 font-ui text-xs leading-relaxed text-muted-foreground">
-                    Your saved position and mission progress will be replaced. Settings are kept.
+                    Your saved house, character and progress will be replaced. Settings are kept.
                   </p>
                   <div className="mt-4 flex flex-wrap gap-3">
                     <button
@@ -322,14 +376,18 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
                     <MenuRow
                       index="01"
                       label="Continue"
-                      detail="Resume from your last save"
+                      detail={
+                        profile && house
+                          ? `${profile.characterName} · ${house.shortName} House`
+                          : "Resume from your last save"
+                      }
                       onClick={() => engine?.continueGame()}
                     />
                   )}
                   <MenuRow
                     index={state.hasSave ? "02" : "01"}
                     label="New Game"
-                    detail="First afternoon · main gate"
+                    detail="Choose a house & student"
                     onClick={() => {
                       if (state.hasSave) setConfirmNew(true);
                       else engine?.newGame();
@@ -366,7 +424,7 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
                       </p>
                       <ul className="mt-3 space-y-1.5 font-ui text-[11px] text-foreground/70">
                         <li>W A S D — walk</li>
-                        <li>Shift — run</li>
+                        <li>Shift — run · C — crouch</li>
                         <li>Mouse — look · Space — jump</li>
                         <li>E — interact · Esc — pause</li>
                       </ul>
@@ -378,7 +436,7 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
                       <ul className="mt-3 space-y-1.5 font-ui text-[11px] text-foreground/70">
                         <li>Left stick — walk</li>
                         <li>Drag the right side — look</li>
-                        <li>Jump and Interact buttons</li>
+                        <li>Crouch, Jump and Interact buttons</li>
                         <li>Tap the campus to begin looking</li>
                       </ul>
                     </div>
@@ -400,7 +458,7 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
 
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-foreground/10 pt-4 font-ui text-[9px] uppercase tracking-[0.24em] text-foreground/30">
           <span>An original fictional campus · Not based on any real school plan</span>
-          <span>Phase 1 · Golden hour</span>
+          <span>Term II · Houses & night</span>
         </footer>
       </div>
     </div>
@@ -412,12 +470,16 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
 function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null }) {
   const mission = state.mission;
   const objectiveNumber = Math.min(mission.total, mission.step + 1);
+  const night = state.night?.active ? state.night : null;
+  const profile = state.profile;
+  const house = profile ? getHouse(profile.houseId) : null;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 font-ui">
       <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/55 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent" />
 
+      {!night && (
       <motion.div
         key={mission.objective}
         initial={{ opacity: 0, y: -8 }}
@@ -450,12 +512,36 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
           ))}
         </div>
       </motion.div>
+      )}
 
-      <div className="absolute right-4 top-4 flex items-center gap-3 sm:right-6 sm:top-6">
-        <div className="hidden text-right sm:block">
-          <p className="label-cinema text-[9px] text-foreground/45">Golden hour · 17:40</p>
+      {night && <NightMissionHud night={night} />}
+
+      <div className="absolute right-4 top-4 flex items-center gap-2 sm:right-6 sm:top-6 sm:gap-3">
+        {profile && house && (
+          <button
+            type="button"
+            onClick={() => engine?.openProfile()}
+            aria-label="Open player profile"
+            data-testid="hud-profile"
+            className="pointer-events-auto flex items-center gap-2 border border-foreground/15 bg-black/35 px-2 py-1.5 backdrop-blur-sm transition hover:border-primary/50"
+          >
+            <HouseEmblem houseId={house.id} size={26} />
+            <span className="text-left">
+              <span className="hidden font-display text-[13px] leading-tight text-[#f2e7d2] sm:block">
+                {profile.characterName}
+              </span>
+              <span className="mt-0.5 block font-ui text-[8px] uppercase tracking-[0.16em] text-foreground/40">
+                {house.shortName} · Lv {profile.level}
+              </span>
+            </span>
+          </button>
+        )}
+        <div className="hidden text-right lg:block">
+          <p className="label-cinema text-[9px] text-foreground/45">
+            {night ? "Lights out · 00:20" : "Golden hour · 17:40"}
+          </p>
           <p className="mt-1 font-ui text-[10px] uppercase tracking-[0.2em] text-foreground/30">
-            Navodaya campus
+            {night ? "Night life" : "Navodaya campus"}
           </p>
         </div>
         <button
@@ -494,6 +580,75 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
   );
 }
 
+function NightMissionHud({
+  night,
+}: {
+  night: NonNullable<GameUIState["night"]>;
+}) {
+  const collected = night.collected.length;
+  const suspicion = Math.round(night.suspicion * 100);
+  return (
+    <motion.div
+      key={night.objective}
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      data-testid="night-hud"
+      className="absolute left-4 top-4 w-[calc(100%-7.5rem)] max-w-[16rem] border-l pl-4 sm:left-6 sm:top-6 sm:max-w-[20rem]"
+      style={{ borderColor: "rgba(176,198,218,0.55)" }}
+    >
+      <p className="label-cinema text-[9px] text-[#b9cee2]/80">
+        Night life · Objective {Math.min(night.total, night.step + 1)} / {night.total}
+      </p>
+      <p className="mt-1.5 font-display text-[15px] leading-snug text-[#eaf0f7] drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]">
+        {night.title}
+      </p>
+      <p className="mt-1 max-w-[19rem] font-ui text-[11px] leading-relaxed text-foreground/80 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
+        {night.objective}
+      </p>
+      <p className="mt-1 hidden max-w-[19rem] font-ui text-[10px] leading-relaxed text-foreground/40 sm:block">
+        {night.hint}
+      </p>
+
+      <div className="mt-3 max-w-[15rem] rounded-sm border border-[#b9cee2]/15 bg-black/45 px-3 py-2 backdrop-blur-sm">
+        <div className="flex items-center justify-between gap-3 font-ui text-[8px] uppercase tracking-[0.18em]">
+          <span className="inline-flex items-center gap-1.5 text-foreground/50">
+            <Eye className="size-2.5" /> Suspicion
+          </span>
+          <span className={suspicion > 55 ? "text-[#e3a28d]" : "text-[#d7c6a3]/70"}>{suspicion}%</span>
+        </div>
+        <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-foreground/15" role="meter" aria-label="Suspicion" aria-valuemin={0} aria-valuemax={100} aria-valuenow={suspicion}>
+          <div
+            className="h-full rounded-full transition-[width] duration-200"
+            style={{
+              width: `${suspicion}%`,
+              backgroundColor: suspicion > 70 ? "#d96f55" : suspicion > 35 ? "#e0b06a" : "#9fb9c9",
+            }}
+          />
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2 font-ui text-[8px] uppercase tracking-[0.14em]">
+          <span className={`inline-flex items-center gap-1.5 ${night.hidden ? "text-[#a8d3ad]" : "text-foreground/35"}`}>
+            {night.hidden ? <EyeOff className="size-2.5" /> : <Footprints className="size-2.5" />}
+            {night.hidden ? "Hidden" : "Exposed"}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-foreground/45">
+            <Leaf className="size-2.5" /> {collected}/4
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-2.5 flex items-center gap-1.5">
+        {Array.from({ length: night.total }).map((_, index) => (
+          <span
+            key={index}
+            className={`h-[3px] w-5 ${index <= night.step ? "bg-[#9fb9c9]" : "bg-foreground/15"}`}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
 /* ----------------------------------------------------------------- pause UI */
 
 function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine | null }) {
@@ -522,14 +677,36 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
             detail="Write to this device"
             onClick={() => engine?.saveGame(true)}
           />
+          {state.profile && state.mission.done && (
+            <MenuRow
+              index="03"
+              label={state.night?.active ? "Resume night run" : "Night Life"}
+              detail={
+                state.night?.active
+                  ? `Midnight Garden Run · attempt ${state.night.attempts}`
+                  : state.profile.achievements.includes("midnight-garden")
+                    ? "Midnight Garden Run · replay (no duplicate reward)"
+                    : "Lights out · Midnight Garden Run"
+              }
+              onClick={() => (state.night?.active ? engine?.resume() : engine?.startNight())}
+            />
+          )}
+          {state.profile && (
+            <MenuRow
+              index={state.profile && state.mission.done ? "04" : "03"}
+              label="Player profile"
+              detail={`${getHouse(state.profile.houseId)?.shortName ?? "House"} · Level ${state.profile.level} · Achievements`}
+              onClick={() => engine?.openProfile()}
+            />
+          )}
           <MenuRow
-            index="03"
+            index={state.profile ? (state.mission.done ? "05" : "04") : "03"}
             label="Settings"
             detail="Graphics · camera · audio"
             onClick={() => engine?.openSettings()}
           />
           <MenuRow
-            index="04"
+            index={state.profile ? (state.mission.done ? "06" : "05") : "04"}
             label="Return to title"
             detail="Your day is saved"
             onClick={() => setConfirmQuit(true)}
@@ -585,6 +762,22 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
               {state.hasSave ? "Local" : "Not yet"}
             </p>
           </div>
+          {state.profile && (
+            <>
+              <div>
+                <p className="label-cinema text-[9px] text-foreground/35">House</p>
+                <p className="mt-1 font-display text-lg text-foreground/85">
+                  {getHouse(state.profile.houseId)?.shortName ?? "—"}
+                </p>
+              </div>
+              <div>
+                <p className="label-cinema text-[9px] text-foreground/35">Level · XP</p>
+                <p className="mt-1 font-display text-lg text-foreground/85">
+                  {state.profile.level} · {state.profile.xp}
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="mt-6 flex items-center justify-between">

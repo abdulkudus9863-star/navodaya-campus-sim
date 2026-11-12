@@ -10,7 +10,7 @@ import {
   type Quality,
   type SaveData,
 } from "./types";
-import { levelFromXp, validAchievementIds } from "../data/achievements";
+import { levelFromXp, maxXpForAchievements, validAchievementIds } from "../data/achievements";
 import { DEFAULT_CHARACTER_ID, DEFAULT_HOUSE_ID, isHouseId } from "../data/houses";
 import { GARDEN_ITEM_IDS, NIGHT_TOTAL_STEPS, isGardenItemId } from "../data/night";
 import { newPlayerProfile } from "../data/profile";
@@ -68,8 +68,8 @@ function sanitizeNight(raw: unknown, missionDone: boolean): NightSave {
   const collected = Array.from(
     new Set(collectedRaw.filter((id): id is (typeof GARDEN_ITEM_IDS)[number] => isGardenItemId(id))),
   );
-  const success = source.success === true;
-  const caught = source.caught === true;
+  const success = source.success === true && collected.length === GARDEN_ITEM_IDS.length;
+  const caught = source.caught === true && !success;
   const active = source.active === true && !success && !caught;
   let step = clamp(Math.floor(num(source.step, 0)), 0, NIGHT_TOTAL_STEPS);
   if (active && step === NIGHT_TOTAL_STEPS && collected.length < GARDEN_ITEM_IDS.length) {
@@ -78,12 +78,13 @@ function sanitizeNight(raw: unknown, missionDone: boolean): NightSave {
   return {
     active,
     started: source.started === true || active || success || caught,
-    step,
+    step: success ? NIGHT_TOTAL_STEPS : step,
     collected: caught ? [] : collected,
     attempts: clamp(Math.floor(num(source.attempts, 0)), 0, 999),
     caught,
     success,
-    completedAt: Number.isFinite(source.completedAt) ? (source.completedAt as number) : null,
+    completedAt:
+      success && Number.isFinite(source.completedAt) ? (source.completedAt as number) : null,
   };
 }
 
@@ -111,9 +112,12 @@ function sanitizeProfile(
   const validation = validateCharacterSelection(source.characterId, source.houseId);
   if (!validation.ok) return null;
   if (!getStudent(source.characterId)) return null;
-  const xp = clamp(Math.floor(num(source.xp, 0)), 0, MAX_XP);
   const achievements = validAchievementIds(source.achievements);
   if (!achievements.includes("house-colours")) achievements.push("house-colours");
+  const xp = Math.min(
+    clamp(Math.floor(num(source.xp, 0)), 0, MAX_XP),
+    maxXpForAchievements(achievements),
+  );
   return {
     playerId: source.playerId,
     characterId: source.characterId,
@@ -146,8 +150,12 @@ function sanitizeSave(raw: unknown): SaveData | null {
   if (!mission || typeof mission !== "object") return null;
   const completedRaw = Array.isArray(mission.completed) ? mission.completed : [];
   const validIds = new Set(MISSION_STEPS.map((s) => s.id));
-  const completed = completedRaw.filter(
-    (id): id is string => typeof id === "string" && validIds.has(id),
+  const completed = Array.from(
+    new Set(
+      completedRaw.filter(
+        (id): id is string => typeof id === "string" && validIds.has(id),
+      ),
+    ),
   );
   const step = clamp(Math.floor(num(mission.step, completed.length)), 0, MISSION_STEPS.length);
   const missionDone = completed.length >= MISSION_STEPS.length;

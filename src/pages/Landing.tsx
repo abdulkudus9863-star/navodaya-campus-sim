@@ -278,9 +278,9 @@ const CAMPUS_FEATURES = [
     copy: "A shaded veranda of classrooms facing the plaza. Room 12 has a blackboard, desks and a door that actually opens.",
   },
   {
-    name: "Nilayam",
-    kind: "Hostel",
-    copy: "Ground-floor room with a bed, a study table and a window. The first place on campus that is yours.",
+    name: "House Nilayams",
+    kind: "House hostels",
+    copy: "Four colour-coded hostel rooms on the south lawn — one for each house, with its own flag, captain and prefect.",
   },
   {
     name: "Annapoorna",
@@ -318,8 +318,8 @@ const FIRST_DAY = [
     detail: "Cross the veranda of the academic block and push the door to Room 12.",
   },
   {
-    title: "Report to your room",
-    detail: "The hostel is east of the plaza. Ground floor, door facing the assembly ground.",
+    title: "Report to your house hostel",
+    detail: "Aravali, Nilgiri, Shivalik or Udaygiri — find your colours on the south lawn and step inside.",
   },
 ];
 
@@ -569,7 +569,7 @@ export default function Landing() {
                   sits inside these walls.”
                 </p>
                 <p className="mt-5 font-ui text-[10px] uppercase tracking-[0.22em] text-[#7a6442]">
-                  Meera · Third year · Ravi House
+                  Meera · Third year · Nilgiri House
                 </p>
               </div>
             </Reveal>

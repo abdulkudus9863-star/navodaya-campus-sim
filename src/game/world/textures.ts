@@ -263,6 +263,49 @@ export function nameTagTexture(name: string, role: string): THREE.CanvasTexture 
   return texture;
 }
 
+export function houseFlagTexture(name: string, color: string, motto: string): THREE.CanvasTexture {
+  const ctx = canvas2d(512, 320);
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, 512, 320);
+  const shade = ctx.createLinearGradient(0, 0, 512, 320);
+  shade.addColorStop(0, "rgba(255,255,255,0.18)");
+  shade.addColorStop(0.48, "rgba(255,255,255,0)");
+  shade.addColorStop(1, "rgba(0,0,0,0.28)");
+  ctx.fillStyle = shade;
+  ctx.fillRect(0, 0, 512, 320);
+  ctx.fillStyle = "rgba(248,238,214,0.16)";
+  ctx.beginPath();
+  ctx.moveTo(0, 320);
+  ctx.lineTo(512, 88);
+  ctx.lineTo(512, 168);
+  ctx.lineTo(0, 320);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(248,238,214,0.88)";
+  ctx.lineWidth = 7;
+  ctx.strokeRect(12, 12, 488, 296);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#f8eed6";
+  ctx.font = "700 54px Georgia, 'Times New Roman', serif";
+  ctx.fillText(name.toUpperCase(), 256, 130);
+  ctx.font = "italic 22px Georgia, 'Times New Roman', serif";
+  ctx.fillText(motto, 256, 172);
+  ctx.strokeStyle = "rgba(248,238,214,0.7)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(206, 206);
+  ctx.lineTo(256, 174);
+  ctx.lineTo(306, 206);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(256, 246, 24, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#f8eed6";
+  ctx.font = "600 15px 'Helvetica Neue', Arial, sans-serif";
+  ctx.fillText("NAVODAYA · THE CAMPUS LIFE", 256, 292);
+  return toTexture(ctx, false);
+}
+
 export function flagTexture(): THREE.CanvasTexture {
   const ctx = canvas2d(512, 320);
   ctx.fillStyle = "#7d2b2b";

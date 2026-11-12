@@ -10,6 +10,11 @@ export class MissionSystem {
   completed: string[] = [];
   done = false;
   started = false;
+  houseName = "your house";
+
+  setHouseName(name: string): void {
+    this.houseName = name || "your house";
+  }
 
   onStepComplete: ((stepId: string, allDone: boolean) => void) | null = null;
 
@@ -51,8 +56,12 @@ export class MissionSystem {
     const step = MISSION_STEPS[this.stepIndex];
     return {
       title: MISSION_TITLE,
-      objective: step.objective,
-      hint: step.hint,
+      objective:
+        step.id === "hostel" ? `Enter ${this.houseName} Hostel` : step.objective,
+      hint:
+        step.id === "hostel"
+          ? `${this.houseName} stands on the south lawn. Its flag and door carry the house colours.`
+          : step.hint,
       step: this.stepIndex,
       total: MISSION_STEPS.length,
       completed: [...this.completed],

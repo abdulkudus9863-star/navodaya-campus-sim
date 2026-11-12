@@ -1,0 +1,5 @@
+TEST FAILURE: goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/play
+Call log:
+[2m  - navigating to "http://localhost:5173/play", waiting until "domcontentloaded"[22m
+
+Console errors: 0
