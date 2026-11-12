@@ -288,6 +288,9 @@ export class GameEngine {
       assign(houseId: string, characterId: string) {
         return engine.startNewGameWith(houseId, characterId);
       },
+      worldState() {
+        return engine.world.inspect();
+      },
       roster() {
         return {
           count: STUDENT_ROSTER.length,

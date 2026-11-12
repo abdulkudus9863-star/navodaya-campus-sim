@@ -72,7 +72,7 @@ export class NPCSystem {
     } else {
       this.add({
         id: "reminder",
-        text: "Hostel is east of the plaza. Ground floor, door facing the assembly ground. Unpack, take a breath — you've nearly finished your first day.",
+        text: "Your house hostel is on the south lawn — Aravali, Nilgiri, Shivalik or Udaygiri. Look for your colours over the door, then unpack. You've nearly finished your first day.",
       });
       this.currentId = "reminder";
     }

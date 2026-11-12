@@ -1612,7 +1612,7 @@ export class WorldEnvironment {
     this.npc = rig;
     this.npcBaseY = rig.group.position.y;
 
-    const tagTexture = nameTagTexture("Meera", "Senior · Ravi House");
+    const tagTexture = nameTagTexture("Meera", "Senior · Nilgiri House");
     this.disposables.push(tagTexture);
     const tagMaterial = new THREE.SpriteMaterial({
       map: tagTexture,
@@ -1851,6 +1851,30 @@ export class WorldEnvironment {
       position.z > info.zone.minZ + inset &&
       position.z < info.zone.maxZ - inset
     );
+  }
+
+  /** Read-only diagnostic snapshot used by the development test hooks. */
+  inspect() {
+    return {
+      nightGroup: this.nightGroup.visible,
+      stars: this.stars?.visible ?? false,
+      moon: this.moon?.visible ?? false,
+      houseLights: this.houseLights.map((light) => light.visible),
+      patrols: this.patrols.map((patrol) => ({
+        x: Number(patrol.rig.group.position.x.toFixed(2)),
+        z: Number(patrol.rig.group.position.z.toFixed(2)),
+        facing: Number(patrol.facing.toFixed(2)),
+        routePoints: patrol.route.length,
+      })),
+      gardenPlots: this.gardenPlots.map((plot) => ({ id: plot.itemId, active: plot.active !== false })),
+      roommate: this.roommate?.group.visible ?? false,
+      roommateActive: this.roommateInteractable?.active ?? false,
+      activeHouseId: this.activeHouseId,
+      marker: this.marker.visible,
+      detection: { ...this.patrolDetection },
+      hideZones: this.hideZones.map((zone) => ({ ...zone })),
+      garden: { x: this.gardenCenter.x, z: this.gardenCenter.z, radius: this.gardenRadius },
+    };
   }
 
   isHidden(position: THREE.Vector3, crouching: boolean): boolean {

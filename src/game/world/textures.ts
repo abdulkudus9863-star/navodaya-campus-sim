@@ -137,7 +137,7 @@ export function noticeTexture(): THREE.CanvasTexture {
   ctx.fillText("NAVODAYA VIDYALAYA", 512, 96);
   ctx.font = "22px 'Helvetica Neue', Arial, sans-serif";
   ctx.fillStyle = "#d9cba9";
-  ctx.fillText("NOTICE BOARD  ·  RAVI HOUSE  ·  TERM II", 512, 132);
+  ctx.fillText("NOTICE BOARD  ·  FOUR HOUSES  ·  TERM II", 512, 132);
 
   const rand = seededRandom(88);
   const papers = [
@@ -318,9 +318,9 @@ export function flagTexture(): THREE.CanvasTexture {
   ctx.fillStyle = "#f2e3bf";
   ctx.textAlign = "center";
   ctx.font = "700 92px Georgia, serif";
-  ctx.fillText("AGNI", 256, 168);
+  ctx.fillText("NAVODAYA", 256, 168);
   ctx.font = "26px 'Helvetica Neue', Arial, sans-serif";
-  ctx.fillText("RAVI HOUSE · NAVODAYA", 256, 226);
+  ctx.fillText("FOUR HOUSES · ONE CAMPUS", 256, 226);
   ctx.fillStyle = "#e0b15e";
   ctx.beginPath();
   ctx.moveTo(256, 240);

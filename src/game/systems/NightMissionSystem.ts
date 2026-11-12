@@ -46,7 +46,9 @@ export class NightMissionSystem {
     this.success = save.success;
     this.completedAt = save.completedAt;
     this.attempts = save.attempts;
-    this.stepIndex = Math.min(NIGHT_TOTAL_STEPS - 1, Math.max(0, save.step));
+    this.stepIndex = save.success
+      ? NIGHT_TOTAL_STEPS
+      : Math.min(NIGHT_TOTAL_STEPS - 1, Math.max(0, save.step));
     this.collected = [...save.collected];
     this.endDialogue();
     return this.view();
@@ -127,6 +129,7 @@ export class NightMissionSystem {
     if (this.currentStepId !== "return-home") return false;
     this.active = false;
     this.success = true;
+    this.stepIndex = NIGHT_TOTAL_STEPS;
     this.completedAt = Date.now();
     return true;
   }

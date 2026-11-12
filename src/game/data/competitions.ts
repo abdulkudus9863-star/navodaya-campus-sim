@@ -176,7 +176,9 @@ export interface Standings {
  * Pure aggregation. Duplicate result IDs and duplicate event IDs are ignored,
  * so re-submitting an approved result cannot double-award points.
  */
-export function buildStandings(): Standings {
+export function buildStandings(
+  results: readonly CompetitionResult[] = COMPETITION_RESULTS,
+): Standings {
   const points = new Map<HouseId, number>(HOUSES.map((house) => [house.id, 0]));
   const firstPlaces = new Map<HouseId, number>(HOUSES.map((house) => [house.id, 0]));
   const seenResultIds = new Set<string>();
@@ -185,7 +187,7 @@ export function buildStandings(): Standings {
   const rejectedResultIds: string[] = [];
   const championships: ChampionshipRecord[] = [];
 
-  for (const result of COMPETITION_RESULTS) {
+  for (const result of results) {
     if (
       seenResultIds.has(result.id) ||
       seenEventIds.has(result.eventId) ||
