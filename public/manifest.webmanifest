@@ -1,11 +1,11 @@
 {
   "name": "Navodaya: The Campus Life",
   "short_name": "Navodaya",
-  "description": "An original residential school-life simulation set in a small, walkable 3D campus.",
+  "description": "Explore campus life, discover four houses, take on adventures and create your own story in NAVODAYA: THE CAMPUS LIFE.",
   "start_url": "/play",
   "display": "standalone",
-  "background_color": "#0b0a08",
-  "theme_color": "#0b0a08",
+  "background_color": "#0b1711",
+  "theme_color": "#0b1711",
   "icons": [
     {
       "src": "/logo.svg",

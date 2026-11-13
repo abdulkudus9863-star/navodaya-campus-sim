@@ -121,6 +121,12 @@
     background: oklch(0.79 0.105 78 / 0.32);
     color: oklch(0.97 0.015 85);
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
 }
 
 @layer utilities {
