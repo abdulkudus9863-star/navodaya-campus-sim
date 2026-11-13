@@ -38,6 +38,7 @@ export class GameStore {
       profile: null,
       night: null,
       nightResult: null,
+      gardenDuty: null,
       profileOpen: false,
       crouching: false,
       hasSave,

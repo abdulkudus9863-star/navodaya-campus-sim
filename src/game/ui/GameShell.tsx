@@ -471,6 +471,7 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
   const mission = state.mission;
   const objectiveNumber = Math.min(mission.total, mission.step + 1);
   const night = state.night?.active ? state.night : null;
+  const duty = state.gardenDuty;
   const profile = state.profile;
   const house = profile ? getHouse(profile.houseId) : null;
 
@@ -479,7 +480,7 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
       <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/55 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent" />
 
-      {!night && (
+      {!night && !duty && (
       <motion.div
         key={mission.objective}
         initial={{ opacity: 0, y: -8 }}
@@ -515,6 +516,7 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
       )}
 
       {night && <NightMissionHud night={night} />}
+      {duty && <GardenDutyHud duty={duty} />}
 
       <div className="absolute right-4 top-4 flex items-center gap-2 sm:right-6 sm:top-6 sm:gap-3">
         {profile && house && (
@@ -577,6 +579,42 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
         </div>
       )}
     </div>
+  );
+}
+
+function GardenDutyHud({ duty }: { duty: NonNullable<GameUIState["gardenDuty"]> }) {
+  return (
+    <motion.div
+      key={duty.complete ? "complete" : String(duty.watered)}
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      data-testid="garden-duty-hud"
+      className="absolute left-4 top-4 w-[calc(100%-7.5rem)] max-w-[16rem] border-l border-[#9fc38d]/55 pl-4 sm:left-6 sm:top-6 sm:max-w-[20rem]"
+    >
+      <p className="label-cinema text-[9px] text-[#cfe0bd]/80">
+        Garden duty · {duty.complete ? "Complete" : "Mr. Barua"}
+      </p>
+      <p className="mt-1.5 font-display text-[15px] leading-snug text-[#edf3e5] drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]">
+        {duty.complete ? "Duty signed off" : "Water three garden beds"}
+      </p>
+      <p className="mt-1 max-w-[19rem] font-ui text-[11px] leading-relaxed text-foreground/75 drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
+        {duty.complete
+          ? "The tomatoes are accounted for. Breakfast is still warm."
+          : "Use the garden plots behind the south lawn. No XP and no house points are awarded."}
+      </p>
+      <div className="mt-3 flex items-center gap-2 font-ui text-[9px] uppercase tracking-[0.18em] text-[#cfe0bd]/60">
+        <Leaf className="size-3" /> {duty.watered} / {duty.total} beds watered
+      </div>
+      <div className="mt-2 flex items-center gap-1.5">
+        {Array.from({ length: duty.total }).map((_, index) => (
+          <span
+            key={index}
+            className={`h-[3px] w-8 ${index < duty.watered ? "bg-[#9fc38d]" : "bg-foreground/15"}`}
+          />
+        ))}
+      </div>
+    </motion.div>
   );
 }
 
@@ -653,6 +691,15 @@ function NightMissionHud({
 
 function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine | null }) {
   const [confirmQuit, setConfirmQuit] = useState(false);
+  const dutyAvailable = Boolean(
+    state.profile &&
+      state.mission.done &&
+      !state.night?.active &&
+      state.profile.achievements.includes("caught-in-the-act") &&
+      !state.profile.achievements.includes("garden-duty"),
+  );
+  const settingsIndex = state.profile ? (state.mission.done ? (dutyAvailable ? "06" : "05") : "04") : "03";
+  const returnIndex = state.profile ? (state.mission.done ? (dutyAvailable ? "07" : "06") : "05") : "04";
 
   return (
     <div className="absolute inset-0 z-30 flex overflow-y-auto bg-black/55 backdrop-blur-[3px]">
@@ -699,14 +746,26 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
               onClick={() => engine?.openProfile()}
             />
           )}
+          {dutyAvailable && (
+            <MenuRow
+              index="05"
+              label={state.gardenDuty?.active ? "Resume garden duty" : "Garden duty"}
+              detail={
+                state.gardenDuty?.active
+                  ? `${state.gardenDuty.watered} / ${state.gardenDuty.total} beds watered`
+                  : "Water three beds for Mr. Barua"
+              }
+              onClick={() => (state.gardenDuty?.active ? engine?.resume() : engine?.startGardenDuty())}
+            />
+          )}
           <MenuRow
-            index={state.profile ? (state.mission.done ? "05" : "04") : "03"}
+            index={settingsIndex}
             label="Settings"
             detail="Graphics · camera · audio"
             onClick={() => engine?.openSettings()}
           />
           <MenuRow
-            index={state.profile ? (state.mission.done ? "06" : "05") : "04"}
+            index={returnIndex}
             label="Return to title"
             detail="Your day is saved"
             onClick={() => setConfirmQuit(true)}

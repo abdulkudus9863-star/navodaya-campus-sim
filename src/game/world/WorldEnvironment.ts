@@ -41,6 +41,7 @@ export interface WorldInteractable {
   door?: Door;
   studentId?: string;
   itemId?: GardenItemId;
+  verb?: string;
 }
 
 export interface WorldZone {
@@ -194,7 +195,14 @@ export class WorldEnvironment {
   private markerMaterials: THREE.MeshBasicMaterial[] = [];
   private signMeshes: THREE.Mesh[] = [];
   private houseFlagMaterials: Record<HouseId, THREE.MeshStandardMaterial> = {} as Record<HouseId, THREE.MeshStandardMaterial>;
-  private houseNpcs: Array<{ rig: CharacterRig; baseY: number; baseRotation: number }> = [];
+  private houseNpcs: Array<{
+    id: string;
+    rig: CharacterRig;
+    tag: THREE.Sprite;
+    baseY: number;
+    baseRotation: number;
+  }> = [];
+  private playerCharacterId: string | null = null;
   private patrols: NightPatrol[] = [];
   private houseLights: THREE.PointLight[] = [];
   private stars: THREE.Points | null = null;
@@ -1002,10 +1010,10 @@ export class WorldEnvironment {
       const captain = getHouseCaptain(houseId);
       const prefect = getHousePrefect(houseId);
       if (captain) {
-        this.addHouseNpc(captain.displayName, `${house.shortName} · House captain`, cx + 1.85, 38.2, Math.PI, house.color, true);
+        this.addHouseNpc(captain.id, captain.displayName, `${house.shortName} · House captain`, cx + 1.85, 38.2, Math.PI, house.color, true);
       }
       if (prefect) {
-        this.addHouseNpc(prefect.displayName, `${house.shortName} · House prefect`, cx + 2.55, 33.15, Math.PI, house.color, false);
+        this.addHouseNpc(prefect.id, prefect.displayName, `${house.shortName} · House prefect`, cx + 2.55, 33.15, Math.PI, house.color, false);
       }
 
       this.houseHostels[houseId] = {
@@ -1048,6 +1056,7 @@ export class WorldEnvironment {
   }
 
   private addHouseNpc(
+    id: string,
     name: string,
     role: string,
     x: number,
@@ -1060,7 +1069,6 @@ export class WorldEnvironment {
     rig.group.position.set(x, 0, z);
     rig.group.rotation.y = rotationY;
     this.group.add(rig.group);
-    this.houseNpcs.push({ rig, baseY: 0, baseRotation: rotationY });
 
     const tagTexture = nameTagTexture(name, role);
     this.disposables.push(tagTexture);
@@ -1071,6 +1079,19 @@ export class WorldEnvironment {
     tag.scale.set(1.7, 0.53, 1);
     tag.renderOrder = 10;
     this.group.add(tag);
+    this.houseNpcs.push({ id, rig, tag, baseY: 0, baseRotation: rotationY });
+    tag.visible = id !== this.playerCharacterId;
+    rig.group.visible = id !== this.playerCharacterId;
+  }
+
+  /** Hide a leadership NPC when that same student is the player character. */
+  setPlayerCharacterId(id: string | null): void {
+    this.playerCharacterId = id;
+    for (const npc of this.houseNpcs) {
+      const visible = !id || npc.id !== id;
+      npc.rig.group.visible = visible;
+      npc.tag.visible = visible;
+    }
   }
 
   private buildNightLife(): void {
@@ -1837,6 +1858,10 @@ export class WorldEnvironment {
     for (const plot of this.gardenPlots) plot.active = active;
   }
 
+  setGardenPlotVerb(verb: string | null): void {
+    for (const plot of this.gardenPlots) plot.verb = verb ?? undefined;
+  }
+
   isInsideGarden(position: THREE.Vector3): boolean {
     return Math.hypot(position.x - this.gardenCenter.x, position.z - this.gardenCenter.z) < this.gardenRadius;
   }
@@ -1866,9 +1891,18 @@ export class WorldEnvironment {
         facing: Number(patrol.facing.toFixed(2)),
         routePoints: patrol.route.length,
       })),
-      gardenPlots: this.gardenPlots.map((plot) => ({ id: plot.itemId, active: plot.active !== false })),
+      gardenPlots: this.gardenPlots.map((plot) => ({
+        id: plot.itemId,
+        active: plot.active !== false,
+        verb: plot.verb ?? "Pick",
+      })),
       roommate: this.roommate?.group.visible ?? false,
       roommateActive: this.roommateInteractable?.active ?? false,
+      houseNpcs: this.houseNpcs.map((npc) => ({
+        id: npc.id,
+        visible: npc.rig.group.visible,
+        tag: npc.tag.visible,
+      })),
       activeHouseId: this.activeHouseId,
       marker: this.marker.visible,
       detection: { ...this.patrolDetection },

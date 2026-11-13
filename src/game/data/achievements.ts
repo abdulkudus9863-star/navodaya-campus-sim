@@ -25,6 +25,11 @@ export const ACHIEVEMENTS: readonly AchievementDefinition[] = [
     name: "Caught in the Act",
     description: "Discovered that teachers label their tomatoes.",
   },
+  {
+    id: "garden-duty",
+    name: "Garden Duty",
+    description: "Helped Mr. Barua with the beds after the midnight incident.",
+  },
 ];
 
 export function getAchievement(id: string): AchievementDefinition | undefined {
@@ -49,6 +54,7 @@ export const ACHIEVEMENT_XP: Record<string, number> = {
   "first-day": 120,
   "midnight-garden": 60,
   "caught-in-the-act": 0,
+  "garden-duty": 0,
 };
 
 export function maxXpForAchievements(ids: readonly string[]): number {

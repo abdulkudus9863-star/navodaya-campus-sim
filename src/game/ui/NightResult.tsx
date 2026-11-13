@@ -161,6 +161,15 @@ export function NightResultOverlay({
                 >
                   <RotateCcw className="size-3.5" /> Try again
                 </button>
+                {state.profile && !state.profile.achievements.includes("garden-duty") && (
+                  <button
+                    type="button"
+                    onClick={() => engine?.startGardenDuty()}
+                    className="inline-flex items-center justify-center gap-2 border border-[#9fc38d]/35 px-4 py-3 font-ui text-[9px] uppercase tracking-[0.2em] text-[#cfe0bd]/75 transition hover:border-[#9fc38d]/60 hover:text-[#e4efd8]"
+                  >
+                    <Leaf className="size-3" /> Help the garden staff
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => engine?.finishNight()}

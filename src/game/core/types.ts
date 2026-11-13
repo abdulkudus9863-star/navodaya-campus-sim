@@ -150,6 +150,13 @@ export interface NightView {
   completedOnce: boolean;
 }
 
+export interface GardenDutyView {
+  active: boolean;
+  watered: number;
+  total: number;
+  complete: boolean;
+}
+
 export interface NightResultView {
   outcome: "success" | "caught";
   title: string;
@@ -182,6 +189,7 @@ export interface GameUIState {
   profile: PlayerProfileView | null;
   night: NightView | null;
   nightResult: NightResultView | null;
+  gardenDuty: GardenDutyView | null;
   crouching: boolean;
   hasSave: boolean;
   saveBusy: boolean;

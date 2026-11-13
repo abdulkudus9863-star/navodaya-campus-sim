@@ -11,6 +11,7 @@ import {
   type CharacterSettings,
   type DialogueView,
   type GameSettings,
+  type GardenDutyView,
   type NightResultView,
   type NoticeView,
   type PlayerProfileSave,
@@ -74,6 +75,8 @@ export class GameEngine {
   private npc = new NPCSystem();
   private mission = new MissionSystem();
   private night = new NightMissionSystem();
+  private gardenDuty: { active: boolean; watered: Set<GardenItemId>; total: number } | null = null;
+  private gardenDutyTimer: number | null = null;
   private audio = new AudioSystem();
   private profile: PlayerProfileSave | null = null;
   private nightMode = false;
@@ -220,6 +223,7 @@ export class GameEngine {
         const house = getHouse(saved.data.profile.houseId);
         this.player.setCharacter(saved.data.character, house?.color);
         this.world.setHouse(saved.data.profile.houseId);
+        this.world.setPlayerCharacterId(saved.data.profile.characterId);
         this.mission.setHouseName(house?.shortName ?? "your house");
       } else {
         this.store.patch({ hasSave: false });
@@ -270,6 +274,13 @@ export class GameEngine {
           ending: Boolean(state.ending),
           profileOpen: state.profileOpen,
           crouching: engine.crouching,
+          gardenDuty: engine.gardenDuty
+            ? {
+                active: engine.gardenDuty.active,
+                watered: [...engine.gardenDuty.watered],
+                total: engine.gardenDuty.total,
+              }
+            : null,
           houseId: engine.profile?.houseId ?? null,
           characterId: engine.profile?.characterId ?? null,
           xp: engine.profile?.xp ?? 0,
@@ -327,6 +338,7 @@ export class GameEngine {
     this.world.setNight(false);
     this.applyAtmosphere(false);
     this.nightMode = false;
+    this.cancelGardenDuty(false);
     this.night = new NightMissionSystem();
     this.nightCaughtHandled = false;
     this.suspicion = 0;
@@ -341,6 +353,7 @@ export class GameEngine {
       prompt: null,
       night: null,
       nightResult: null,
+      gardenDuty: null,
     });
     this.input.setEnabled(false);
     this.input.reset();
@@ -372,6 +385,7 @@ export class GameEngine {
     const view = toProfileView(profile);
     this.night = new NightMissionSystem();
     this.nightMode = false;
+    this.cancelGardenDuty(false);
     this.nightCaughtHandled = false;
     this.suspicion = 0;
     this.setCrouching(false);
@@ -379,6 +393,7 @@ export class GameEngine {
     this.world.setNight(false);
     this.applyAtmosphere(false);
     this.world.setHouse(house.id);
+    this.world.setPlayerCharacterId(characterId);
     this.mission.setHouseName(house.shortName);
     const character = this.store.getState().character;
     this.player.setCharacter(character, house.color);
@@ -395,6 +410,7 @@ export class GameEngine {
       nightResult: null,
       profileOpen: false,
       crouching: false,
+      gardenDuty: null,
     });
     this.enterPlaying(true);
     this.saveGame(false);
@@ -430,6 +446,7 @@ export class GameEngine {
     const house = getHouse(data.profile.houseId);
     this.player.setCharacter(data.character, house?.color);
     this.world.setHouse(data.profile.houseId);
+    this.world.setPlayerCharacterId(data.profile.characterId);
     this.mission.setHouseName(house?.shortName ?? "your house");
     const restoredPosition = new THREE.Vector3(
       data.player.position.x,
@@ -447,6 +464,7 @@ export class GameEngine {
     this.store.setMission(this.mission.view());
     this.playtime = data.playtime;
     this.night.restore(data.night);
+    this.cancelGardenDuty(false);
     this.nightCaughtHandled = false;
     this.suspicion = 0;
     this.setCrouching(false);
@@ -469,6 +487,7 @@ export class GameEngine {
       profileOpen: false,
       night: this.nightMode ? this.night.view(this.suspicion, this.world.patrolDetection.hidden) : null,
       nightResult: null,
+      gardenDuty: null,
       crouching: false,
     });
     this.enterPlaying(true);
@@ -578,10 +597,12 @@ export class GameEngine {
       prompt: null,
       night: null,
       nightResult: null,
+      gardenDuty: null,
       crouching: false,
       playtime: Math.round(this.playtime),
     });
     this.npc.end();
+    this.cancelGardenDuty(false);
     this.setCrouching(false);
     if (this.nightMode) {
       this.nightMode = false;
@@ -634,11 +655,13 @@ export class GameEngine {
     this.night = new NightMissionSystem();
     this.profile = null;
     this.nightMode = false;
+    this.cancelGardenDuty(false);
     this.nightCaughtHandled = false;
     this.suspicion = 0;
     this.playtime = 0;
     this.setCrouching(false);
     this.world.setNight(false);
+    this.world.setPlayerCharacterId(null);
     this.audio.setNight(false);
     this.applyAtmosphere(false);
     this.store.patch({
@@ -649,6 +672,7 @@ export class GameEngine {
       profile: null,
       night: null,
       nightResult: null,
+      gardenDuty: null,
       dialogue: null,
       notice: null,
       ending: null,
@@ -692,6 +716,7 @@ export class GameEngine {
     const hostel = this.world.houseHostels[this.profile.houseId];
     if (!house || !hostel) return false;
     void this.audio.unlock();
+    this.cancelGardenDuty(false);
     this.night.startNew(this.night.toSave());
     this.nightMode = true;
     this.nightCaughtHandled = false;
@@ -713,6 +738,7 @@ export class GameEngine {
       ending: null,
       nightResult: null,
       night: this.night.view(0, false),
+      gardenDuty: null,
       crouching: false,
     });
     this.store.setPrompt(null);
@@ -766,6 +792,115 @@ export class GameEngine {
     this.showToast("The corridor lights are back on. It is a normal campus morning.");
   }
 
+  startGardenDuty(): boolean {
+    if (!this.profile) return false;
+    if (!this.profile.achievements.includes("caught-in-the-act")) {
+      this.showToast("Mr. Barua only assigns garden duty after a certain midnight incident.");
+      return false;
+    }
+    if (this.profile.achievements.includes("garden-duty")) {
+      this.showToast("The beds are already looked after. Mr. Barua has signed your card.");
+      return false;
+    }
+    if (this.nightMode && this.night.active) return false;
+    void this.audio.unlock();
+    this.nightMode = false;
+    this.world.setNight(false);
+    this.world.setGardenInteractablesActive(true);
+    this.world.setGardenPlotVerb("Water");
+    this.audio.setNight(false);
+    this.applyAtmosphere(false);
+    this.nightCaughtHandled = false;
+    this.suspicion = 0;
+    this.setCrouching(false);
+    const point = new THREE.Vector3(-38, 0, 30.5);
+    this.player.placeAt(point, 0);
+    this.cameraController.resetToPlayer(point, 0);
+    this.gardenDuty = { active: true, watered: new Set(), total: 3 };
+    if (this.gardenDutyTimer) {
+      window.clearTimeout(this.gardenDutyTimer);
+      this.gardenDutyTimer = null;
+    }
+    this.store.patch({
+      screen: "playing",
+      settingsOpen: false,
+      profileOpen: false,
+      dialogue: null,
+      notice: null,
+      ending: null,
+      prompt: null,
+      night: null,
+      nightResult: null,
+      gardenDuty: this.gardenDutyView(),
+      crouching: false,
+    });
+    this.world.hideMarker();
+    this.input.reset();
+    this.input.setEnabled(true);
+    this.requestPointerLock();
+    this.saveGame(false);
+    this.showToast("Mr. Barua hands you a watering can. Three beds, no shortcuts.");
+    return true;
+  }
+
+  private gardenDutyView(): GardenDutyView {
+    return {
+      active: this.gardenDuty?.active ?? false,
+      watered: this.gardenDuty?.watered.size ?? 0,
+      total: this.gardenDuty?.total ?? 3,
+      complete: this.profile?.achievements.includes("garden-duty") ?? false,
+    };
+  }
+
+  private waterGardenPlot(itemId: GardenItemId): void {
+    if (!this.gardenDuty?.active) return;
+    if (this.gardenDuty.watered.has(itemId)) {
+      this.showToast("That bed is already watered.");
+      return;
+    }
+    this.gardenDuty.watered.add(itemId);
+    this.audio.uiClick();
+    const remaining = this.gardenDuty.total - this.gardenDuty.watered.size;
+    if (remaining > 0) {
+      this.store.patch({ gardenDuty: this.gardenDutyView() });
+      this.saveGame(false);
+      this.showToast(
+        `${gardenItem(itemId).name} watered. ${remaining} bed${remaining === 1 ? "" : "s"} left.`,
+      );
+      return;
+    }
+    this.gardenDuty.active = false;
+    this.world.setGardenInteractablesActive(false);
+    this.world.setGardenPlotVerb(null);
+    this.grantProgress(0, "garden-duty");
+    this.store.patch({ gardenDuty: this.gardenDutyView() });
+    this.saveGame(false);
+    this.showToast("Garden duty complete. Mr. Barua signs your card and points you toward breakfast.");
+    if (this.gardenDutyTimer) window.clearTimeout(this.gardenDutyTimer);
+    this.gardenDutyTimer = window.setTimeout(() => {
+      if (this.disposed) return;
+      this.store.patch({ gardenDuty: null });
+      this.gardenDutyTimer = null;
+    }, 5000);
+  }
+
+  private cancelGardenDuty(clearStore = true): void {
+    if (this.gardenDutyTimer) {
+      window.clearTimeout(this.gardenDutyTimer);
+      this.gardenDutyTimer = null;
+    }
+    this.gardenDuty = null;
+    if (!this.world.night) {
+      this.world.setGardenInteractablesActive(false);
+      this.world.setGardenPlotVerb(null);
+    } else {
+      this.world.setGardenPlotVerb(null);
+    }
+    if (clearStore && this.store.getState().gardenDuty !== null) {
+      this.store.patch({ gardenDuty: null });
+    }
+  }
+
   interact(): void {
     const state = this.store.getState();
     if (state.screen !== "playing" || state.settingsOpen) return;
@@ -786,6 +921,10 @@ export class GameEngine {
       return;
     }
     if (target.kind === "garden" && target.itemId) {
+      if (this.gardenDuty?.active) {
+        this.waterGardenPlot(target.itemId);
+        return;
+      }
       if (!this.nightMode || !this.night.active) return;
       if (this.night.currentStepId !== "collect-vegetables") {
         this.showToast("Not before the challenge. Your roommate has the plan.");
@@ -916,6 +1055,7 @@ export class GameEngine {
     if (this.resizeObserver) this.resizeObserver.disconnect();
     if (this.toastTimer) window.clearTimeout(this.toastTimer);
     if (this.endingTimer) window.clearTimeout(this.endingTimer);
+    if (this.gardenDutyTimer) window.clearTimeout(this.gardenDutyTimer);
     window.removeEventListener("keydown", this.handleGlobalKeyDown);
     window.removeEventListener("pagehide", this.handlePageHide);
     document.removeEventListener("visibilitychange", this.handleVisibility);
