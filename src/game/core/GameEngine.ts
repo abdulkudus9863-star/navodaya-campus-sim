@@ -22,6 +22,7 @@ import { CameraController } from "../systems/CameraController";
 import { InteractionSystem } from "../systems/InteractionSystem";
 import { MissionSystem } from "../systems/MissionSystem";
 import { NightMissionSystem } from "../systems/NightMissionSystem";
+import { ExplorationSystem } from "../systems/ExplorationSystem";
 import { NPCSystem } from "../systems/NPCSystem";
 import { PlayerController, collidesAt } from "../systems/PlayerController";
 import { WorldEnvironment, type WorldZone } from "../world/WorldEnvironment";
@@ -75,6 +76,8 @@ export class GameEngine {
   private npc = new NPCSystem();
   private mission = new MissionSystem();
   private night = new NightMissionSystem();
+  private exploration = new ExplorationSystem();
+  private mapReturnScreen: "playing" | "paused" = "playing";
   private gardenDuty: { active: boolean; watered: Set<GardenItemId>; total: number } | null = null;
   private gardenDutyTimer: number | null = null;
   private audio = new AudioSystem();
@@ -225,6 +228,8 @@ export class GameEngine {
         this.world.setHouse(saved.data.profile.houseId);
         this.world.setPlayerCharacterId(saved.data.profile.characterId);
         this.mission.setHouseName(house?.shortName ?? "your house");
+        this.exploration.restore(saved.data.exploration);
+        this.refreshExploration();
       } else {
         this.store.patch({ hasSave: false });
         if (saved.reason === "corrupt") {
@@ -273,6 +278,9 @@ export class GameEngine {
           camera: { yaw: engine.cameraController.yaw, pitch: engine.cameraController.pitch },
           ending: Boolean(state.ending),
           profileOpen: state.profileOpen,
+          planOpen: state.planOpen,
+          campusMapOpen: state.campusMapOpen,
+          discovered: engine.exploration.toSave().discovered,
           crouching: engine.crouching,
           gardenDuty: engine.gardenDuty
             ? {
@@ -298,6 +306,30 @@ export class GameEngine {
       },
       assign(houseId: string, characterId: string) {
         return engine.startNewGameWith(houseId, characterId);
+      },
+      choosePlan(choice: "explore" | "stealth" | "later") {
+        return engine.choosePlan(choice);
+      },
+      openMap() {
+        return engine.openCampusMap();
+      },
+      closeMap() {
+        engine.closeCampusMap();
+      },
+      travel(id: string) {
+        return engine.travelToCampusLocation(id);
+      },
+      exploration() {
+        return {
+          save: engine.exploration.toSave(),
+          map: engine.profile
+            ? engine.exploration.mapView(
+                engine.profile.houseId,
+                engine.player.position.x,
+                engine.player.position.z,
+              )
+            : null,
+        };
       },
       worldState() {
         return engine.world.inspect();
@@ -384,6 +416,7 @@ export class GameEngine {
     this.profile = profile;
     const view = toProfileView(profile);
     this.night = new NightMissionSystem();
+    this.exploration.reset();
     this.nightMode = false;
     this.cancelGardenDuty(false);
     this.nightCaughtHandled = false;
@@ -411,12 +444,17 @@ export class GameEngine {
       profileOpen: false,
       crouching: false,
       gardenDuty: null,
+      exploration: this.explorationView(),
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
     });
     this.enterPlaying(true);
     this.saveGame(false);
     this.showToast(
       `Welcome, ${validation.student.displayName} — ${house.name}. Your hostel is on the south lawn.`,
     );
+    this.openPlan();
     return { ok: true };
   }
 
@@ -464,6 +502,7 @@ export class GameEngine {
     this.store.setMission(this.mission.view());
     this.playtime = data.playtime;
     this.night.restore(data.night);
+    this.exploration.restore(data.exploration);
     this.cancelGardenDuty(false);
     this.nightCaughtHandled = false;
     this.suspicion = 0;
@@ -488,6 +527,10 @@ export class GameEngine {
       night: this.nightMode ? this.night.view(this.suspicion, this.world.patrolDetection.hidden) : null,
       nightResult: null,
       gardenDuty: null,
+      exploration: this.explorationView(),
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
       crouching: false,
     });
     this.enterPlaying(true);
@@ -497,6 +540,9 @@ export class GameEngine {
       this.updateNightMarker();
     } else if (this.mission.done) {
       this.world.showMarker(null, true);
+    }
+    if (!this.nightMode && !this.exploration.hasSeenPlan) {
+      this.openPlan();
     }
     return true;
   }
@@ -513,11 +559,223 @@ export class GameEngine {
 
   resume(): void {
     if (this.store.getState().screen !== "paused") return;
-    this.store.patch({ screen: "playing", settingsOpen: false, profileOpen: false });
+    this.store.patch({
+      screen: "playing",
+      settingsOpen: false,
+      profileOpen: false,
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
+    });
     this.input.reset();
     this.input.setEnabled(true);
     this.requestPointerLock();
     this.audio.uiClick();
+  }
+
+  /** Opens the after-entry choice without tearing down the current run. */
+  openPlan(): void {
+    if (!this.profile) return;
+    if (this.nightMode) {
+      this.showToast("Finish Operation Midnight Mischief before choosing another activity.");
+      return;
+    }
+    const state = this.store.getState();
+    if (state.screen === "playing") this.pause();
+    if (this.store.getState().screen !== "paused") return;
+    this.store.patch({
+      screen: "paused",
+      planOpen: true,
+      campusMapOpen: false,
+      campusMap: null,
+      settingsOpen: false,
+      profileOpen: false,
+      prompt: null,
+    });
+    this.input.setEnabled(false);
+    this.input.reset();
+    this.releasePointerLock();
+    this.audio.uiClick();
+  }
+
+  choosePlan(choice: "explore" | "stealth" | "later"): boolean {
+    if (!this.profile || !this.store.getState().planOpen) return false;
+    this.exploration.markPlanSeen();
+    if (choice === "explore") this.exploration.startTour();
+    this.store.patch({ planOpen: false });
+    this.saveGame(false);
+    if (choice === "explore") {
+      this.openCampusMap("playing");
+      return true;
+    }
+    if (choice === "stealth") return this.startNight();
+    this.resume();
+    return true;
+  }
+
+  openCampusMap(returnTo?: "playing" | "paused"): boolean {
+    const state = this.store.getState();
+    if (!this.profile) return false;
+    if (this.nightMode || this.night.active) {
+      this.showToast("The campus map is closed during nighttime activities.");
+      return false;
+    }
+    if (!state.profile) return false;
+    this.mapReturnScreen = returnTo ?? (state.screen === "playing" ? "playing" : "paused");
+    if (state.screen === "playing") this.pause();
+    else if (state.screen !== "paused") this.store.patch({ screen: "paused" });
+    this.exploration.markPlanSeen();
+    this.store.patch({
+      screen: "paused",
+      planOpen: false,
+      campusMapOpen: true,
+      campusMap: this.exploration.mapView(
+        this.profile.houseId,
+        this.player.position.x,
+        this.player.position.z,
+      ),
+      settingsOpen: false,
+      profileOpen: false,
+      prompt: null,
+    });
+    this.input.setEnabled(false);
+    this.input.reset();
+    this.releasePointerLock();
+    this.saveGame(false);
+    this.audio.uiClick();
+    return true;
+  }
+
+  closeCampusMap(): void {
+    if (!this.store.getState().campusMapOpen) return;
+    this.store.patch({ campusMapOpen: false, campusMap: null });
+    if (this.mapReturnScreen === "playing") {
+      this.resume();
+    } else {
+      this.store.patch({ screen: "paused" });
+      this.audio.uiClick();
+    }
+  }
+
+  travelToCampusLocation(locationId: string): boolean {
+    if (!this.profile) return false;
+    if (this.nightMode || this.night.active) {
+      this.showToast("Travel is unavailable during the midnight caper.");
+      return false;
+    }
+    const location = this.exploration
+      .mapView(this.profile.houseId, this.player.position.x, this.player.position.z)
+      .locations.find((candidate) => candidate.id === locationId);
+    if (!location) return false;
+    if (!location.unlocked) {
+      this.showToast(
+        `Discover ${location.unlockAt} campus stops to add ${location.shortName} to the map.`,
+      );
+      return false;
+    }
+    const point = this.safeTravelPoint(location.x, location.z, location.radius);
+    if (!point) {
+      this.showToast("That entrance is blocked right now. Walk around to the front.");
+      return false;
+    }
+    this.exploration.markPlanSeen();
+    this.cancelGardenDuty(false);
+    this.player.placeAt(point, Math.PI);
+    this.cameraController.resetToPlayer(point, Math.PI);
+    this.store.patch({
+      screen: "playing",
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
+      settingsOpen: false,
+      profileOpen: false,
+      prompt: null,
+      ending: null,
+    });
+    this.input.reset();
+    this.input.setEnabled(true);
+    this.requestPointerLock();
+    this.saveGame(false);
+    this.refreshExploration();
+    this.showToast(`Arrived at ${location.name}. ${location.story}`);
+    return true;
+  }
+
+  private safeTravelPoint(x: number, z: number, radius: number): THREE.Vector3 | null {
+    const limit = this.world.bounds - 2;
+    const candidates = [new THREE.Vector3(x, 0, z)];
+    for (const distance of [radius * 0.6, radius * 0.8]) {
+      for (let index = 0; index < 8; index += 1) {
+        const angle = (index / 8) * Math.PI * 2;
+        candidates.push(
+          new THREE.Vector3(x + Math.cos(angle) * distance, 0, z + Math.sin(angle) * distance),
+        );
+      }
+    }
+    return (
+      candidates.find(
+        (point) =>
+          Math.abs(point.x) < limit &&
+          Math.abs(point.z) < limit &&
+          !collidesAt(point.x, point.z, this.world.colliders),
+      ) ?? null
+    );
+  }
+
+  private explorationView() {
+    if (!this.profile) return null;
+    const map = this.exploration.mapView(
+      this.profile.houseId,
+      this.player.position.x,
+      this.player.position.z,
+    );
+    return {
+      discovered: map.discovered,
+      total: map.total,
+      nextUnlock: map.nextUnlock
+        ? `Discover ${map.nextUnlock.count} stops to unlock ${map.nextUnlock.names.join(", ")}`
+        : "Every route stop is unlocked",
+      tourStarted: this.exploration.started,
+    };
+  }
+
+  private refreshExploration(): void {
+    if (!this.profile) return;
+    const view = this.explorationView();
+    this.store.patch({
+      exploration: view,
+      ...(this.store.getState().campusMapOpen
+        ? {
+            campusMap: this.exploration.mapView(
+              this.profile.houseId,
+              this.player.position.x,
+              this.player.position.z,
+            ),
+          }
+        : {}),
+    });
+  }
+
+  private updateExploration(): void {
+    if (!this.profile || this.nightMode || this.gardenDuty) return;
+    const result = this.exploration.discoverNearby(
+      this.player.position.x,
+      this.player.position.z,
+      this.profile.houseId,
+    );
+    if (!result.discovered) return;
+    this.audio.chime();
+    this.showToast(`Campus discovered · ${result.discovered.name}. ${result.discovered.story}`);
+    if (result.milestone) {
+      const award = this.grantProgress(result.milestone.xp, result.milestone.id);
+      if (award.xpAwarded > 0) {
+        this.showToast(
+          `Exploration milestone · ${result.milestone.count} stops · +${award.xpAwarded} XP.`,
+        );
+      }
+    }
+    this.refreshExploration();
+    this.saveGame(false);
   }
 
   openProfile(): void {
@@ -598,6 +856,10 @@ export class GameEngine {
       night: null,
       nightResult: null,
       gardenDuty: null,
+      exploration: null,
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
       crouching: false,
       playtime: Math.round(this.playtime),
     });
@@ -637,6 +899,7 @@ export class GameEngine {
       mission: this.mission.toSave(),
       profile: this.profile,
       night: this.night.toSave(),
+      exploration: this.exploration.toSave(),
     };
     const ok = this.saveSystem.save(data);
     if (ok) {
@@ -653,6 +916,7 @@ export class GameEngine {
     this.npc.end();
     this.mission = new MissionSystem();
     this.night = new NightMissionSystem();
+    this.exploration.reset();
     this.profile = null;
     this.nightMode = false;
     this.cancelGardenDuty(false);
@@ -673,6 +937,10 @@ export class GameEngine {
       night: null,
       nightResult: null,
       gardenDuty: null,
+      exploration: null,
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
       dialogue: null,
       notice: null,
       ending: null,
@@ -705,12 +973,7 @@ export class GameEngine {
   }
 
   startNight(): boolean {
-    const state = this.store.getState();
     if (!this.profile) return false;
-    if (!this.mission.done) {
-      this.showToast("Finish your first day before lights-out.");
-      return false;
-    }
     if (this.night.active) return false;
     const house = getHouse(this.profile.houseId);
     const hostel = this.world.houseHostels[this.profile.houseId];
@@ -725,6 +988,7 @@ export class GameEngine {
     for (const door of this.world.doors) door.setOpenInstant(false);
     this.world.setNight(true);
     this.world.setGardenInteractablesActive(true);
+    this.world.setGardenPlotVerb("Search");
     this.audio.setNight(true);
     this.applyAtmosphere(true);
     this.player.placeAt(hostel.interiorPoint, 0);
@@ -739,6 +1003,9 @@ export class GameEngine {
       nightResult: null,
       night: this.night.view(0, false),
       gardenDuty: null,
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
       crouching: false,
     });
     this.store.setPrompt(null);
@@ -747,7 +1014,7 @@ export class GameEngine {
     this.updateNightMarker();
     this.requestPointerLock();
     this.saveGame(false);
-    this.showToast("Lights out. Your roommate is waiting inside the hostel.");
+    this.showToast("Operation Midnight Mischief is live. Your roommate is waiting inside the hostel.");
     return true;
   }
 
@@ -832,6 +1099,9 @@ export class GameEngine {
       night: null,
       nightResult: null,
       gardenDuty: this.gardenDutyView(),
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
       crouching: false,
     });
     this.world.hideMarker();
@@ -939,10 +1209,10 @@ export class GameEngine {
       this.saveGame(false);
       this.store.patch({ night: this.night.view(this.suspicion, this.world.patrolDetection.hidden) });
       if (result.completed) {
-        this.showToast("Four vegetables. Now get back to the hostel before the next sweep.");
+        this.showToast("All four fictional markers found. Return them to the hostel before the next sweep.");
         this.updateNightMarker();
       } else {
-        this.showToast(`${gardenItem(target.itemId).name} in the bag. Keep low.`);
+        this.showToast(`${gardenItem(target.itemId).markerName} found. Keep low.`);
       }
       return;
     }
@@ -1080,6 +1350,9 @@ export class GameEngine {
       screen: "playing",
       settingsOpen: false,
       profileOpen: false,
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
       prompt: null,
       ending: null,
     });
@@ -1163,7 +1436,7 @@ export class GameEngine {
       this.night.reachGarden();
       this.saveGame(false);
       this.updateNightMarker();
-      this.showToast("The kitchen garden. Four plots, one of each. Watch the torchlight.");
+      this.showToast("The garden game zone. Four marker beds, one marker each. Watch the torchlight.");
       this.audio.chime();
     }
 
@@ -1234,7 +1507,7 @@ export class GameEngine {
     this.input.setEnabled(true);
     this.updateNightMarker();
     this.saveGame(false);
-    this.showToast("South lawn, kitchen garden. Four vegetables, then back. Crouch near the hedge.");
+    this.showToast("South lawn, garden game zone. Four markers, then back. Crouch near the hedge.");
     this.requestPointerLock();
   }
 
@@ -1276,11 +1549,11 @@ export class GameEngine {
     const collected = outcome === "success" ? this.night.collected : [];
     const resultView: NightResultView = {
       outcome,
-      title: outcome === "success" ? "Clean escape" : "Caught in the garden",
+      title: outcome === "success" ? "Mischief managed" : "Caught on the lawn",
       message:
         outcome === "success"
-          ? `You made it back to ${house?.hostelName ?? "the hostel"} with four vegetables and no torchlight on your heels. Your roommate is already pretending to be asleep.`
-          : "Mr. Barua confiscated the vegetables and delivered a short, devastating lecture about permanent marker. The mess will get its tomatoes back. Your roommate claims to have been asleep.",
+          ? `You made it back to ${house?.hostelName ?? "the hostel"} with all four fictional markers and no torchlight on your heels. The club gets them back tomorrow. Your roommate is already pretending to be asleep.`
+          : "Mr. Barua confiscated the painted markers and delivered a short, devastating lecture about running through the botany beds after lights-out. No real produce was taken. Your roommate claims to have been asleep.",
       xpAwarded,
       rewardAlreadyClaimed: alreadyClaimed,
       achievementId,
@@ -1321,7 +1594,7 @@ export class GameEngine {
     }
     this.saveGame(false);
     if (result.allDone) {
-      this.showToast("Welcome home. Night Life is now available in the pause menu.");
+      this.showToast("Welcome home. Open the campus map, or start Operation Midnight Mischief from the pause menu.");
       this.scheduleEnding();
     } else {
       const view = this.mission.view();
@@ -1391,6 +1664,14 @@ export class GameEngine {
   private handleGlobalKeyDown = (event: KeyboardEvent): void => {
     const state = this.store.getState();
     if (event.code === "Escape") {
+      if (state.planOpen) {
+        this.choosePlan("later");
+        return;
+      }
+      if (state.campusMapOpen) {
+        this.closeCampusMap();
+        return;
+      }
       if (state.profileOpen) {
         this.closeProfile();
         return;
@@ -1476,6 +1757,7 @@ export class GameEngine {
       ) {
         this.completeStep("hostel");
       }
+      this.updateExploration();
 
       const seconds = Math.floor(this.playtime);
       if (seconds !== state.playtime) this.store.patch({ playtime: seconds });

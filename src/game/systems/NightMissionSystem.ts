@@ -168,20 +168,20 @@ export class NightMissionSystem {
     });
     this.add({
       id: "plan",
-      text: "The teachers' kitchen garden behind the south lawn. Tomatoes, potatoes, carrots, cabbage. Four, no more. The mess pantry is empty and the inspection is at dawn.",
+      text: "Operation Midnight Mischief. The gardening club hid four painted vegetable markers around the kitchen garden for tomorrow's Founders' Day game. We find them, bring them back, and put them in the common room. Nobody takes any actual produce.",
       choices: [
-        { label: "Why not just ask the teachers?", next: "why" },
-        { label: "Four vegetables. I'll go.", next: "go" },
+        { label: "Why play it after lights-out?", next: "why" },
+        { label: "Four markers. I'm in.", next: "go" },
       ],
     });
     this.add({
       id: "why",
-      text: "Because the garden is 'strictly for practical botany'. We are not botany. Also, Mr. Barua counts the tomatoes. Allegedly.",
+      text: "Because the game is more fun with a torch sweep. Mr. Barua is patrolling, the prefect is pretending not to know, and the whole thing is invented. If you're caught, I was asleep and you were never here.",
       next: "go",
     });
     this.add({
       id: "go",
-      text: "Take the south path. Crouch near the hedge when the torch sweeps. If you're caught, I was asleep and you were never here.",
+      text: "Take the south path. Crouch near the hedge when the torch sweeps. Search the four beds, then bring the markers back to the hostel. No house points, no real theft — just a very fictional caper.",
     });
     this.currentId = "wake";
     this.mode = "challenge";
@@ -194,12 +194,12 @@ export class NightMissionSystem {
     this.role = "Botany teacher · Night duty";
     this.add({
       id: "caught-1",
-      text: "Stop right there. Those vegetables are for the school mess, not a midnight buffet. The tomatoes were labelled — in permanent marker.",
+      text: "Stop right there. The garden game closed at lights-out. Those painted markers belong to the gardening club — and you are not supposed to be doing amateur commando practice across the beds.",
       next: "caught-2",
     });
     this.add({
       id: "caught-2",
-      text: "The garden is for practical botany, not practical hunger. Put them back, report to your hostel, and tell your roommate the pantry has a list. A list with names on it.",
+      text: "The tomatoes are not a midnight buffet, the markers are not treasure, and this is not a heist. Put everything back, report to your hostel, and tell your roommate the game has a referee. A referee with a torch.",
     });
     this.currentId = "caught-1";
     this.mode = "caught";

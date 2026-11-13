@@ -425,8 +425,8 @@ export default function Landing() {
                 Some places teach you before the first bell.
               </p>
               <p className="mt-3 max-w-xl font-ui text-[13px] leading-relaxed text-foreground/60">
-                An original residential campus you can walk end to end. Read the board, find your
-                classroom, unpack your room — and meet the senior who will point you the right way.
+                An interpretive JNV campus you can walk end to end. Read the board, find your
+                classroom, explore the route — or try the fictional midnight caper.
               </p>
 
               <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -463,7 +463,7 @@ export default function Landing() {
 
           <div className="flex items-center justify-between gap-4 border-t border-foreground/10 py-4">
             <p className="font-ui text-[9px] uppercase tracking-[0.26em] text-foreground/30">
-              An original fictional campus
+              An interpretive JNV campus
             </p>
             <p className="hidden font-ui text-[9px] uppercase tracking-[0.26em] text-foreground/30 sm:block">
               Walk · Look · Interact · Save
@@ -827,9 +827,10 @@ export default function Landing() {
 
           <div className="flex flex-col justify-between gap-4 border-t border-foreground/10 pt-6 font-ui text-[9px] uppercase tracking-[0.1em] leading-relaxed text-foreground/25 sm:flex-row sm:items-end">
             <p className="max-w-2xl normal-case tracking-normal">
-              Navodaya: The Campus Life is a work of fiction. The campus, staff and residents are
-              original and are not based on any real school, map or floor plan. Progress is stored in
-              this browser only.
+              Navodaya: The Campus Life is a fictional interactive story. The campus is an
+              interpretive recreation inspired by publicly described JNV facilities, including JNV
+              Bishnupur, Manipur; building positions, people, houses, stories and the midnight caper
+              are game fiction, not a surveyed plan. Progress is stored in this browser only.
             </p>
             <p className="shrink-0 uppercase tracking-[0.2em]">
               Three.js · React · Local save

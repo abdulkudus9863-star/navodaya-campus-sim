@@ -26,7 +26,7 @@ export function NightResultOverlay({
       data-testid="night-result"
       role="dialog"
       aria-modal="true"
-      aria-label={success ? "Midnight Garden Run complete" : "Midnight Garden Run failed"}
+      aria-label={success ? "Operation Midnight Mischief complete" : "Operation Midnight Mischief failed"}
     >
       <div
         className="pointer-events-none fixed inset-0 opacity-55"
@@ -49,7 +49,7 @@ export function NightResultOverlay({
               {success ? <Moon className="size-4 text-[#f0d29b]" /> : <ShieldAlert className="size-4 text-[#e0a08c]" />}
             </span>
             <div>
-              <p className="label-cinema text-[#ecd7af]/70">Night Life · Midnight Garden Run</p>
+              <p className="label-cinema text-[#ecd7af]/70">Operation Midnight Mischief</p>
               <p className="mt-1 font-ui text-[9px] uppercase tracking-[0.2em] text-foreground/35">
                 Attempt {result.attempts} · {success ? "Undetected return" : "Patrol interception"}
               </p>
@@ -96,12 +96,12 @@ export function NightResultOverlay({
               </p>
             </div>
             <div className="bg-[#11120f] px-5 py-4">
-              <p className="label-cinema text-[8px] text-foreground/35">Vegetables</p>
+              <p className="label-cinema text-[8px] text-foreground/35">Markers</p>
               <p className="mt-1 font-display text-2xl text-foreground/90">
                 {success ? result.collected.length : 0} / 4
               </p>
               <p className="mt-1 font-ui text-[9px] uppercase tracking-[0.16em] text-foreground/30">
-                {success ? "Back at the hostel" : "Confiscated"}
+                {success ? "Returned to the club" : "Confiscated by Mr. Barua"}
               </p>
             </div>
           </div>
@@ -112,7 +112,7 @@ export function NightResultOverlay({
                 const item = gardenItem(itemId);
                 return (
                   <span key={itemId} className="inline-flex items-center gap-1.5 border border-[#f0e0c0]/15 px-2.5 py-1 font-ui text-[9px] uppercase tracking-[0.14em] text-foreground/55">
-                    <Leaf className="size-2.5 text-[#9fc38d]" /> {item.shortName}
+                    <Leaf className="size-2.5 text-[#9fc38d]" /> {item.markerShortName}
                   </span>
                 );
               })}
@@ -183,7 +183,7 @@ export function NightResultOverlay({
         </div>
 
         <p className="mt-4 text-center font-ui text-[9px] uppercase tracking-[0.18em] text-foreground/25">
-          No unrestricted farming · collectibles exist only during the active run
+          Fictional campus caper · no real theft · markers exist only during the active run
         </p>
       </motion.div>
     </div>

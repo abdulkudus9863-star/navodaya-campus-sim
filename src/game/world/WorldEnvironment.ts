@@ -314,6 +314,8 @@ export class WorldEnvironment {
       flagPole: this.standard("#cdc6b6", 0.35, 0.7),
       cement: this.standard("#a49c8c", 0.94),
       darkTrim: this.standard("#3c3a34", 0.8),
+      bamboo: this.standard("#607b45", 0.9),
+      hill: this.standard("#718066", 0.98),
     };
 
     const noticeMap = noticeTexture();
@@ -332,6 +334,9 @@ export class WorldEnvironment {
       ["signLibrary", "GYAN MANDIR", "LIBRARY & READING ROOM"],
       ["signSports", "KHEL MAIDAN", "SPORTS GROUND"],
       ["signGarden", "KITCHEN GARDEN", "STAFF ONLY · PRACTICAL BOTANY"],
+      ["signAdmin", "PRASHASAN", "ADMINISTRATION · PRINCIPAL'S OFFICE"],
+      ["signLabs", "VIGYAN BHAVAN", "SCIENCE LABORATORIES · PRACTICALS"],
+      ["signKitchen", "RASOI", "KITCHEN · DINING STORE"],
     ];
     for (const [key, main, sub] of signs) {
       const map = signTexture(main, sub);
@@ -498,9 +503,14 @@ export class WorldEnvironment {
     await this.stage(0.64, "Opening the hostel", onProgress);
     this.buildHostel();
 
-    await this.stage(0.74, "Serving the dining hall", onProgress);
+    await this.stage(0.72, "Serving the dining hall", onProgress);
     this.buildDiningHall();
+    this.buildKitchen();
     this.buildLibrary();
+
+    await this.stage(0.78, "Adding administration and laboratories", onProgress);
+    this.buildAdministration();
+    this.buildScienceLabs();
 
     await this.stage(0.84, "Marking the sports ground", onProgress);
     this.buildSportsGround();
@@ -513,6 +523,7 @@ export class WorldEnvironment {
 
     await this.stage(0.94, "Planting gardens", onProgress);
     this.buildGardensAndTrees();
+    this.buildRegionalLandscape();
     this.buildStreetProps();
     this.buildNpc();
 
@@ -1152,10 +1163,10 @@ export class WorldEnvironment {
     this.hideZones.push({ minX: shedX - 1.25, maxX: shedX + 1.25, minZ: shedZ - 1.0, maxZ: shedZ + 1.15 });
 
     const gardenPlots: Array<[GardenItemId, number, number, string]> = [
-      ["tomato", -41.2, 24.1, "Tomatoes"],
-      ["potato", -38, 24.1, "Potatoes"],
-      ["carrot", -34.8, 24.1, "Carrots"],
-      ["cabbage", -38, 27.2, "Cabbage"],
+      ["tomato", -41.2, 24.1, "Tomato bed"],
+      ["potato", -38, 24.1, "Potato bed"],
+      ["carrot", -34.8, 24.1, "Carrot bed"],
+      ["cabbage", -38, 27.2, "Cabbage bed"],
     ];
     for (const [itemId, x, z, label] of gardenPlots) {
       const plot: WorldInteractable = {
@@ -1368,6 +1379,74 @@ export class WorldEnvironment {
     this.builder.box("metal", { w: 0.5, h: 0.5, d: 0.5 }, -11, 6.9, -36, {});
   }
 
+  /** Low, pitched-roof administrative block beside the main entrance. */
+  private buildAdministration(): void {
+    this.solid("plasterWarm", 11, 4.4, 8, 13, 43.5, "administration");
+    this.builder.box("roof", { w: 11.8, h: 0.22, d: 8.8 }, 13, 4.55, 43.5, {});
+    this.builder.add(
+      "roof",
+      new THREE.ConeGeometry(8.2, 2.6, 4),
+      13,
+      5.75,
+      43.5,
+      { rotY: Math.PI / 4, scale: { x: 1.0, y: 1, z: 0.86 } },
+    );
+    this.builder.box("stonePlaza", { w: 5, h: 0.08, d: 2.4 }, 13, 0.04, 39.1, {});
+    this.builder.box("plinth", { w: 5.2, h: 0.16, d: 2.5 }, 13, 0.08, 39.1, {});
+    this.builder.box("wood", { w: 2.0, h: 2.5, d: 0.18 }, 13, 1.25, 39.44, {});
+    this.builder.box("glassWarm", { w: 1.55, h: 1.9, d: 0.08 }, 13, 1.35, 39.35, {});
+    [-3.4, 3.4].forEach((offset) => {
+      this.builder.box("whitePaint", { w: 1.8, h: 1.4, d: 0.12 }, 13 + offset, 2.2, 39.44, {});
+      this.builder.box("glass", { w: 1.5, h: 1.15, d: 0.08 }, 13 + offset, 2.2, 39.36, {});
+    });
+    this.sign("signAdmin", 4.6, 1.0, 13, 3.55, 39.38, 0);
+    this.addPath(0.8, 41.8, 10.7, 39.8, 2.3);
+  }
+
+  /** Four-bay practical science wing, kept separate from the classrooms. */
+  private buildScienceLabs(): void {
+    this.solid("plasterCool", 15, 5.2, 11, 36, -38, "science-labs");
+    this.builder.box("plinth", { w: 15.6, h: 0.4, d: 11.5 }, 36, 5.4, -38, {});
+    this.builder.add(
+      "roof",
+      new THREE.ConeGeometry(10.4, 2.4, 4),
+      36,
+      6.8,
+      -38,
+      { rotY: Math.PI / 4, scale: { x: 1.02, y: 1, z: 0.8 } },
+    );
+    this.builder.box("roof", { w: 16.2, h: 0.22, d: 12.2 }, 36, 5.3, -38, {});
+    this.builder.box("stonePlaza", { w: 11, h: 0.07, d: 2.8 }, 36, 0.035, -31.5, {});
+    [-4.7, -1.6, 1.6, 4.7].forEach((offset, index) => {
+      this.builder.box("whitePaint", { w: 2.5, h: 1.9, d: 0.13 }, 36 + offset, 2.15, -32.44, {});
+      this.builder.box("glass", { w: 2.15, h: 1.55, d: 0.08 }, 36 + offset, 2.15, -32.36, {});
+      if (index === 1 || index === 2) {
+        this.builder.box("wood", { w: 1.0, h: 2.2, d: 0.12 }, 36 + offset, 1.1, -32.42, {});
+      }
+    });
+    this.sign("signLabs", 5.2, 1.08, 36, 3.85, -32.34, 0);
+    this.builder.box("metal", { w: 0.42, h: 1.2, d: 0.42 }, 41.5, 6.0, -41.5, {});
+    this.addPath(18.2, -31.4, 28.7, -33.2, 2.2);
+  }
+
+  /** Kitchen and store wing beside the dining hall. */
+  private buildKitchen(): void {
+    this.solid("plasterWarm", 7, 4.0, 7, 22, -40, "kitchen");
+    this.builder.box("roof", { w: 7.7, h: 0.22, d: 7.7 }, 22, 4.12, -40, {});
+    this.builder.add(
+      "roof",
+      new THREE.ConeGeometry(5.4, 1.8, 4),
+      22,
+      5.05,
+      -40,
+      { rotY: Math.PI / 4, scale: { x: 1.0, y: 1, z: 0.9 } },
+    );
+    this.builder.box("metal", { w: 0.65, h: 2.6, d: 0.65 }, 24.4, 5.4, -41.6, {});
+    this.builder.box("wood", { w: 1.8, h: 2.3, d: 0.14 }, 22, 1.15, -36.44, {});
+    this.builder.box("glassWarm", { w: 1.3, h: 1.5, d: 0.1 }, 22, 2.6, -36.4, {});
+    this.sign("signKitchen", 3.2, 0.72, 22, 3.35, -36.36, 0);
+  }
+
   private buildLibrary(): void {
     this.solid("plaster", 18, 7.4, 15, -36, -30, "library");
     this.builder.box("roof", { w: 19.4, h: 0.4, d: 16.4 }, -36, 7.6, -30, {});
@@ -1536,6 +1615,53 @@ export class WorldEnvironment {
     this.builder.add("lampGlow", new THREE.SphereGeometry(0.2, 10, 8), x + 0.42, 3.52, z);
     this.builder.box("metal", { w: 0.62, h: 0.1, d: 0.62 }, x + 0.42, 3.72, z, {});
     this.collider(x - 0.2, x + 0.2, z - 0.2, z + 0.2, "lamp");
+  }
+
+  /**
+   * Deliberately restrained regional dressing: bamboo at the edges and low
+   * hills beyond the wall. It suggests the Manipur setting without claiming to
+   * reproduce the real school's landscape or exact building positions.
+   */
+  private buildRegionalLandscape(): void {
+    const hills: Array<[number, number, number, number]> = [
+      [-78, -92, 1.25, 1.4],
+      [18, -110, 1.7, 1.15],
+      [108, -82, 1.35, 1.25],
+    ];
+    for (const [x, z, scale, height] of hills) {
+      this.builder.add(
+        "hill",
+        new THREE.IcosahedronGeometry(1, 2),
+        x,
+        -18,
+        z,
+        { scale: { x: 62 * scale, y: 30 * height, z: 42 * scale } },
+      );
+    }
+
+    const clusters: Array<[number, number, number]> = [
+      [-50, -8, 1.0],
+      [51, 6, 0.92],
+      [-50, 20, 1.08],
+    ];
+    for (const [cx, cz, scale] of clusters) {
+      for (let index = 0; index < 7; index += 1) {
+        const angle = (index / 7) * Math.PI * 2;
+        const radius = 0.8 + (index % 3) * 0.35;
+        const x = cx + Math.cos(angle) * radius;
+        const z = cz + Math.sin(angle) * radius;
+        const height = (6.2 + (index % 4) * 0.9) * scale;
+        this.builder.cylinder("bamboo", 0.055, 0.09, height, 5, x, height / 2, z, {});
+        this.builder.add(
+          "foliageB",
+          new THREE.IcosahedronGeometry(0.42, 0),
+          x + Math.cos(angle) * 0.35,
+          height - 0.5,
+          z + Math.sin(angle) * 0.35,
+          { scale: { x: 1.1, y: 0.7, z: 1.1 } },
+        );
+      }
+    }
   }
 
   private buildGardensAndTrees(): void {
@@ -1894,7 +2020,7 @@ export class WorldEnvironment {
       gardenPlots: this.gardenPlots.map((plot) => ({
         id: plot.itemId,
         active: plot.active !== false,
-        verb: plot.verb ?? "Pick",
+        verb: plot.verb ?? "Search",
       })),
       roommate: this.roommate?.group.visible ?? false,
       roommateActive: this.roommateInteractable?.active ?? false,

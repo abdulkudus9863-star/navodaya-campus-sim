@@ -3,6 +3,7 @@
  * render state without importing three.js. House IDs are the only domain types
  * that cross from the data layer into the save format.
  */
+import type { CampusMapView } from "../data/campus";
 import type { GardenItemId } from "../data/night";
 import type { HouseId } from "../data/houses";
 
@@ -66,6 +67,19 @@ export interface NightSave {
   completedAt: number | null;
 }
 
+export interface ExplorationSave {
+  discovered: string[];
+  planSeen: boolean;
+  tourStarted: boolean;
+}
+
+export interface ExplorationView {
+  discovered: number;
+  total: number;
+  nextUnlock: string | null;
+  tourStarted: boolean;
+}
+
 export interface SaveData {
   version: 2;
   savedAt: number;
@@ -76,6 +90,7 @@ export interface SaveData {
   mission: MissionSave;
   profile: PlayerProfileSave;
   night: NightSave;
+  exploration: ExplorationSave;
 }
 
 export interface DialogueChoice {
@@ -190,6 +205,10 @@ export interface GameUIState {
   night: NightView | null;
   nightResult: NightResultView | null;
   gardenDuty: GardenDutyView | null;
+  exploration: ExplorationView | null;
+  planOpen: boolean;
+  campusMapOpen: boolean;
+  campusMap: CampusMapView | null;
   crouching: boolean;
   hasSave: boolean;
   saveBusy: boolean;

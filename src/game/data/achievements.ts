@@ -17,8 +17,8 @@ export const ACHIEVEMENTS: readonly AchievementDefinition[] = [
   },
   {
     id: "midnight-garden",
-    name: "Midnight Gardener",
-    description: "Returned from the teachers' garden unseen.",
+    name: "Midnight Mischief",
+    description: "Completed Operation Midnight Mischief without being caught.",
   },
   {
     id: "caught-in-the-act",
@@ -29,6 +29,21 @@ export const ACHIEVEMENTS: readonly AchievementDefinition[] = [
     id: "garden-duty",
     name: "Garden Duty",
     description: "Helped Mr. Barua with the beds after the midnight incident.",
+  },
+  {
+    id: "campus-wanderer",
+    name: "Campus Wanderer",
+    description: "Explored three named places on the campus route.",
+  },
+  {
+    id: "campus-cartographer",
+    name: "Campus Cartographer",
+    description: "Explored six named places on the campus route.",
+  },
+  {
+    id: "campus-life",
+    name: "Campus Life",
+    description: "Visited every stop on the interpretive campus route.",
   },
 ];
 
@@ -55,6 +70,9 @@ export const ACHIEVEMENT_XP: Record<string, number> = {
   "midnight-garden": 60,
   "caught-in-the-act": 0,
   "garden-duty": 0,
+  "campus-wanderer": 40,
+  "campus-cartographer": 80,
+  "campus-life": 120,
 };
 
 export function maxXpForAchievements(ids: readonly string[]): number {

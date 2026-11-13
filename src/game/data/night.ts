@@ -4,13 +4,40 @@ export interface GardenItem {
   id: GardenItemId;
   name: string;
   shortName: string;
+  /** The fictional game prop found during Operation Midnight Mischief. */
+  markerName: string;
+  markerShortName: string;
 }
 
 export const GARDEN_ITEMS: readonly GardenItem[] = [
-  { id: "tomato", name: "Tomatoes", shortName: "Tomato" },
-  { id: "potato", name: "Potatoes", shortName: "Potato" },
-  { id: "carrot", name: "Carrots", shortName: "Carrot" },
-  { id: "cabbage", name: "Cabbage", shortName: "Cabbage" },
+  {
+    id: "tomato",
+    name: "Tomatoes",
+    shortName: "Tomato",
+    markerName: "Tomato marker",
+    markerShortName: "Tomato marker",
+  },
+  {
+    id: "potato",
+    name: "Potatoes",
+    shortName: "Potato",
+    markerName: "Potato marker",
+    markerShortName: "Potato marker",
+  },
+  {
+    id: "carrot",
+    name: "Carrots",
+    shortName: "Carrot",
+    markerName: "Carrot marker",
+    markerShortName: "Carrot marker",
+  },
+  {
+    id: "cabbage",
+    name: "Cabbage",
+    shortName: "Cabbage",
+    markerName: "Cabbage marker",
+    markerShortName: "Cabbage marker",
+  },
 ];
 
 export const GARDEN_ITEM_IDS: readonly GardenItemId[] = GARDEN_ITEMS.map((item) => item.id);
@@ -32,7 +59,7 @@ export interface NightStepDefinition {
   hint: string;
 }
 
-export const NIGHT_MISSION_TITLE = "Night Life · Midnight Garden Run";
+export const NIGHT_MISSION_TITLE = "Operation Midnight Mischief";
 
 export const NIGHT_STEPS: readonly NightStepDefinition[] = [
   {
@@ -43,26 +70,26 @@ export const NIGHT_STEPS: readonly NightStepDefinition[] = [
   },
   {
     id: "garden-challenge",
-    title: "The challenge",
-    objective: "Hear the roommate's garden challenge",
-    hint: "Four vegetables. The mess pantry is not part of the plan.",
+    title: "The midnight game",
+    objective: "Hear the rules of Operation Midnight Mischief",
+    hint: "A fictional campus game. No produce leaves the garden.",
   },
   {
     id: "reach-garden",
     title: "Out of the hostel",
-    objective: "Reach the teachers' kitchen garden",
+    objective: "Reach the garden game zone",
     hint: "Leave the hostel quietly and cross the south lawn.",
   },
   {
     id: "collect-vegetables",
-    title: "The harvest",
-    objective: "Collect four vegetables from the garden",
-    hint: "One of each: tomato, potato, carrot and cabbage.",
+    title: "The markers",
+    objective: "Find four fictional garden markers",
+    hint: "One of each: tomato, potato, carrot and cabbage marker.",
   },
   {
     id: "return-home",
     title: "The way back",
-    objective: "Return to your house hostel",
+    objective: "Return the markers to your house hostel",
     hint: "Stay low, watch the patrols, and do not run in the open.",
   },
 ];

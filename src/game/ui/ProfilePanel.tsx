@@ -123,11 +123,17 @@ export function ProfilePanel({
                 <span>{profile.xp} XP total</span>
                 <span>{xp.toNext} to next level</span>
               </div>
-              <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden border border-foreground/10 bg-foreground/10">
+              <div className="mt-5 grid grid-cols-3 gap-px overflow-hidden border border-foreground/10 bg-foreground/10">
                 <div className="bg-[#12100c] p-3">
                   <p className="label-cinema text-[8px] text-foreground/35">Achievements</p>
                   <p className="mt-1 font-display text-xl text-foreground/85">
                     {profile.achievements.length} / {ACHIEVEMENTS.length}
+                  </p>
+                </div>
+                <div className="bg-[#12100c] p-3">
+                  <p className="label-cinema text-[8px] text-foreground/35">Campus stops</p>
+                  <p className="mt-1 font-display text-xl text-foreground/85">
+                    {state.exploration?.discovered ?? 0} / {state.exploration?.total ?? 10}
                   </p>
                 </div>
                 <div className="bg-[#12100c] p-3">
@@ -245,8 +251,9 @@ export function ProfilePanel({
                 </table>
               </div>
               <p className="mt-2 font-ui text-[9px] leading-relaxed text-foreground/25">
-                Points come from approved competition results only. The night activity never awards
-                house points, and standings are not stored in the editable local save.
+                Points come from approved competition results only. Exploring and the fictional
+                midnight caper never award house points, and standings are not stored in the
+                editable local save.
               </p>
             </section>
 

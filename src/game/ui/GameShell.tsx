@@ -12,6 +12,7 @@ import {
   Leaf,
   Loader2,
   LogOut,
+  Map as MapIcon,
   Moon,
   Mouse,
   Pause,
@@ -28,6 +29,8 @@ import { GameStore, useGameState } from "../core/GameStore";
 import { SaveSystem } from "../core/SaveSystem";
 import { DEFAULT_SETTINGS, type GameUIState } from "../core/types";
 import { getHouse } from "../data/houses";
+import { CampusMap } from "./CampusMap";
+import { CampusPlan } from "./CampusPlan";
 import { CharacterCreation } from "./CharacterCreation";
 import { HouseEmblem } from "./HouseVisuals";
 import { MobileControls } from "./MobileControls";
@@ -124,8 +127,14 @@ export function GameShell() {
         </>
       )}
 
-      {ready && state.screen === "paused" && !state.settingsOpen && (
+      {ready && state.screen === "paused" && !state.settingsOpen && !state.planOpen && !state.campusMapOpen && (
         <PauseMenu state={state} engine={engine} />
+      )}
+
+      {ready && state.planOpen && <CampusPlan state={state} engine={engine} />}
+
+      {ready && state.campusMapOpen && state.campusMap && (
+        <CampusMap state={state} engine={engine} />
       )}
 
       {ready && state.dialogue && state.screen === "dialogue" && (
@@ -217,7 +226,7 @@ function LoadingScreen({ state, onRetry }: { state: GameUIState; onRetry: () => 
               <span className="tabular-nums text-primary/80">{progress}%</span>
             </div>
             <p className="mt-10 font-ui text-[10px] uppercase tracking-[0.3em] text-foreground/25">
-              Original campus · Procedural textures · Local save
+              Interpretive JNV campus · Procedural textures · Local save
             </p>
           </div>
         )}
@@ -295,7 +304,7 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
           <div className="text-right">
             <p className="label-cinema text-primary/70">Term II</p>
             <p className="mt-1 font-ui text-[10px] uppercase tracking-[0.22em] text-foreground/40">
-              Houses · Night life
+              Houses · Campus route
             </p>
           </div>
         </header>
@@ -307,7 +316,7 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
             transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
             className="w-full max-w-xl"
           >
-            <p className="label-cinema text-primary/80">An original residential campus</p>
+            <p className="label-cinema text-primary/80">An interpretive JNV campus</p>
             <h1 className="mt-4 font-display text-[clamp(3.4rem,9vw,6rem)] leading-[0.92] tracking-[0.04em] text-[#f4ead6] drop-shadow-[0_10px_40px_rgba(0,0,0,0.6)]">
               NAVODAYA
             </h1>
@@ -315,8 +324,8 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
               The Campus Life
             </p>
             <p className="mt-6 max-w-md font-ui text-sm leading-relaxed text-foreground/70">
-              Walk the gate, read the board, find your classroom. A small campus with nothing to
-              prove — and a whole term ahead of you.
+              Walk the gate, read the board, find your classroom. Then choose your own day: a
+              campus route with hidden notes, or a fictional midnight caper.
             </p>
 
             {profile && house && (
@@ -457,8 +466,8 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
         </div>
 
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-foreground/10 pt-4 font-ui text-[9px] uppercase tracking-[0.24em] text-foreground/30">
-          <span>An original fictional campus · Not based on any real school plan</span>
-          <span>Term II · Houses & night</span>
+          <span>Interpretive JNV campus · Fictional people & caper · Not a surveyed plan</span>
+          <span>Term II · Houses, route & caper</span>
         </footer>
       </div>
     </div>
@@ -502,6 +511,9 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
             {mission.hint}
           </p>
         )}
+        <p className="mt-1.5 font-ui text-[9px] uppercase tracking-[0.16em] text-[#b9c69d]/55">
+          Campus route · {state.exploration?.discovered ?? 0}/{state.exploration?.total ?? 10}
+        </p>
         <div className="mt-2.5 flex items-center gap-1.5">
           {Array.from({ length: mission.total }).map((_, index) => (
             <span
@@ -519,6 +531,25 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
       {duty && <GardenDutyHud duty={duty} />}
 
       <div className="absolute right-4 top-4 flex items-center gap-2 sm:right-6 sm:top-6 sm:gap-3">
+        {profile && !night && (
+          <button
+            type="button"
+            onClick={() => engine?.openCampusMap()}
+            aria-label="Open campus map"
+            data-testid="hud-map"
+            className="pointer-events-auto flex items-center gap-2 border border-foreground/15 bg-black/35 px-2 py-1.5 backdrop-blur-sm transition hover:border-[#b9c69d]/55 hover:text-[#dce7c6]"
+          >
+            <MapIcon className="size-4 text-foreground/70" />
+            <span className="hidden text-left sm:block">
+              <span className="block font-ui text-[8px] uppercase tracking-[0.16em] text-foreground/55">
+                Campus
+              </span>
+              <span className="mt-0.5 block font-ui text-[7px] uppercase tracking-[0.14em] text-foreground/30">
+                {state.exploration?.discovered ?? 0} / {state.exploration?.total ?? 10} stops
+              </span>
+            </span>
+          </button>
+        )}
         {profile && house && (
           <button
             type="button"
@@ -543,7 +574,7 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
             {night ? "Lights out · 00:20" : "Golden hour · 17:40"}
           </p>
           <p className="mt-1 font-ui text-[10px] uppercase tracking-[0.2em] text-foreground/30">
-            {night ? "Night life" : "Navodaya campus"}
+            {night ? "Operation Midnight Mischief" : "Navodaya campus"}
           </p>
         </div>
         <button
@@ -636,7 +667,7 @@ function NightMissionHud({
       style={{ borderColor: "rgba(176,198,218,0.55)" }}
     >
       <p className="label-cinema text-[9px] text-[#b9cee2]/80">
-        Night life · Objective {Math.min(night.total, night.step + 1)} / {night.total}
+        Operation Midnight Mischief · {Math.min(night.total, night.step + 1)} / {night.total}
       </p>
       <p className="mt-1.5 font-display text-[15px] leading-snug text-[#eaf0f7] drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]">
         {night.title}
@@ -693,13 +724,12 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
   const [confirmQuit, setConfirmQuit] = useState(false);
   const dutyAvailable = Boolean(
     state.profile &&
-      state.mission.done &&
       !state.night?.active &&
       state.profile.achievements.includes("caught-in-the-act") &&
       !state.profile.achievements.includes("garden-duty"),
   );
-  const settingsIndex = state.profile ? (state.mission.done ? (dutyAvailable ? "06" : "05") : "04") : "03";
-  const returnIndex = state.profile ? (state.mission.done ? (dutyAvailable ? "07" : "06") : "05") : "04";
+  const nightAvailable = Boolean(state.profile && (!state.night || state.night.active));
+  const activityAvailable = Boolean(state.profile && !state.night?.active);
 
   return (
     <div className="absolute inset-0 z-30 flex overflow-y-auto bg-black/55 backdrop-blur-[3px]">
@@ -724,23 +754,31 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
             detail="Write to this device"
             onClick={() => engine?.saveGame(true)}
           />
-          {state.profile && state.mission.done && (
+          {activityAvailable && (
             <MenuRow
               index="03"
-              label={state.night?.active ? "Resume night run" : "Night Life"}
+              label="Campus map"
+              detail={`${state.exploration?.discovered ?? 0} / ${state.exploration?.total ?? 10} route stops · travel`}
+              onClick={() => engine?.openCampusMap("paused")}
+            />
+          )}
+          {nightAvailable && (
+            <MenuRow
+              index="04"
+              label={state.night?.active ? "Resume caper" : "Operation Midnight Mischief"}
               detail={
                 state.night?.active
-                  ? `Midnight Garden Run · attempt ${state.night.attempts}`
-                  : state.profile.achievements.includes("midnight-garden")
-                    ? "Midnight Garden Run · replay (no duplicate reward)"
-                    : "Lights out · Midnight Garden Run"
+                  ? `Fictional stealth caper · attempt ${state.night.attempts}`
+                  : state.profile?.achievements.includes("midnight-garden")
+                    ? "Stealth caper · replay (no duplicate reward)"
+                    : "Fictional stealth caper · no house points"
               }
               onClick={() => (state.night?.active ? engine?.resume() : engine?.startNight())}
             />
           )}
           {state.profile && (
             <MenuRow
-              index={state.profile && state.mission.done ? "04" : "03"}
+              index="05"
               label="Player profile"
               detail={`${getHouse(state.profile.houseId)?.shortName ?? "House"} · Level ${state.profile.level} · Achievements`}
               onClick={() => engine?.openProfile()}
@@ -748,7 +786,7 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
           )}
           {dutyAvailable && (
             <MenuRow
-              index="05"
+              index="06"
               label={state.gardenDuty?.active ? "Resume garden duty" : "Garden duty"}
               detail={
                 state.gardenDuty?.active
@@ -758,14 +796,22 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
               onClick={() => (state.gardenDuty?.active ? engine?.resume() : engine?.startGardenDuty())}
             />
           )}
+          {activityAvailable && (
+            <MenuRow
+              index="07"
+              label="Choose activity"
+              detail="Campus tour or Operation Midnight Mischief"
+              onClick={() => engine?.openPlan()}
+            />
+          )}
           <MenuRow
-            index={settingsIndex}
+            index="08"
             label="Settings"
             detail="Graphics · camera · audio"
             onClick={() => engine?.openSettings()}
           />
           <MenuRow
-            index={returnIndex}
+            index="09"
             label="Return to title"
             detail="Your day is saved"
             onClick={() => setConfirmQuit(true)}
@@ -1055,7 +1101,7 @@ function EndingOverlay({ state, engine }: { state: GameUIState; engine: GameEngi
           </button>
         </div>
         <p className="mt-5 font-ui text-[9px] uppercase tracking-[0.22em] text-foreground/25">
-          Progress saved · Phase One prototype
+          Progress saved · Campus route & fictional caper available
         </p>
       </motion.div>
     </div>

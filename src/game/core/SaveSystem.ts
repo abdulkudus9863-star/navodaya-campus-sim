@@ -2,7 +2,6 @@ import {
   DEFAULT_CHARACTER,
   DEFAULT_SETTINGS,
   MISSION_STEPS,
-  emptyNightSave,
   type CharacterSettings,
   type GameSettings,
   type NightSave,
@@ -15,6 +14,7 @@ import { DEFAULT_CHARACTER_ID, DEFAULT_HOUSE_ID, isHouseId } from "../data/house
 import { GARDEN_ITEM_IDS, NIGHT_TOTAL_STEPS, isGardenItemId } from "../data/night";
 import { newPlayerProfile } from "../data/profile";
 import { getStudent, validateCharacterSelection } from "../data/students";
+import { sanitizeExploration } from "../systems/ExplorationSystem";
 
 const KEY = "navodaya.campus.save.v1";
 const QUALITIES: Quality[] = ["low", "medium", "high"];
@@ -60,10 +60,8 @@ export function sanitizeCharacter(raw: unknown): CharacterSettings {
   };
 }
 
-function sanitizeNight(raw: unknown, missionDone: boolean): NightSave {
+function sanitizeNight(raw: unknown): NightSave {
   const source = (raw ?? {}) as Partial<NightSave>;
-  const fallback = emptyNightSave();
-  if (!missionDone) return fallback;
   const collectedRaw = Array.isArray(source.collected) ? source.collected : [];
   const collected = Array.from(
     new Set(collectedRaw.filter((id): id is (typeof GARDEN_ITEM_IDS)[number] => isGardenItemId(id))),
@@ -184,7 +182,8 @@ function sanitizeSave(raw: unknown): SaveData | null {
       completed,
     },
     profile,
-    night: sanitizeNight(source.night, missionDone),
+    night: sanitizeNight(source.night),
+    exploration: sanitizeExploration(source.exploration),
   };
 }
 
