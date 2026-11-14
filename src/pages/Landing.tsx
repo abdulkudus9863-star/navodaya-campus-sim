@@ -13,6 +13,7 @@ import { Link } from "react-router";
 import { HouseEmblem } from "@/game/ui/HouseVisuals";
 import { ACHIEVEMENTS, xpProgress } from "@/game/data/achievements";
 import { CAMPUS_LOCATIONS } from "@/game/data/campus";
+import { ESCAPE_LEVELS } from "@/game/data/escape";
 import { HOUSES } from "@/game/data/houses";
 import { toProfileView } from "@/game/data/profile";
 import { SaveSystem } from "@/game/core/SaveSystem";
@@ -116,13 +117,14 @@ const FEATURES = [
   },
   {
     name: "Adventure missions",
-    description: "Day-one orientation and the Operation Midnight Mischief caper.",
+    description:
+      "Day-one orientation, Operation Midnight Mischief and the Campus Escape obstacle course.",
     status: "Available now",
     active: true,
   },
   {
     name: "Player achievements",
-    description: "Eight campus achievements, each tied to a real milestone.",
+    description: `${ACHIEVEMENTS.length} campus achievements, each tied to a real milestone.`,
     status: "Available now",
     active: true,
   },
@@ -157,6 +159,9 @@ type SavedPreview = {
   orientationTotal: number;
   nightComplete: boolean;
   nightAttempts: number;
+  escapeCompleted: number;
+  escapeTotal: number;
+  escapeBest: number;
 };
 
 function FocusLink({
@@ -237,6 +242,12 @@ function Landing() {
             orientationTotal: 4,
             nightComplete: result.data.night.success,
             nightAttempts: result.data.night.attempts,
+            escapeCompleted: new Set(result.data.escape.records.map((record) => record.levelId)).size,
+            escapeTotal: ESCAPE_LEVELS.length,
+            escapeBest: result.data.escape.records.reduce(
+              (best, record) => Math.max(best, record.bestScore),
+              0,
+            ),
           });
         }
       }
@@ -436,6 +447,7 @@ function Landing() {
                 </span>
                 <span>Campus Tour</span>
                 <span>Operation Midnight Mischief</span>
+                <span>Campus Escape</span>
                 <span>Four Houses</span>
               </div>
             </div>
@@ -452,8 +464,8 @@ function Landing() {
                 </h2>
               </div>
               <p className="max-w-[440px] font-ui text-sm leading-7 text-[#b9b19f] lg:justify-self-end">
-                Two ways into the campus today: take the long route through its named places, or
-                wait for the lights to go out and try not to get caught.
+                Three ways into the story today: take the long route through the campus, wait for
+                the lights to go out, or run the obstacle course before the timer does.
               </p>
             </div>
 
@@ -525,6 +537,55 @@ function Landing() {
                 </div>
               </article>
             </div>
+
+            <article className="mt-5 grid overflow-hidden border border-[#d6ba7e]/35 bg-[#14120d] lg:grid-cols-[1.05fr_0.95fr]">
+              <div className="relative min-h-[300px] overflow-hidden lg:min-h-[380px]">
+                <img
+                  src="/campus/sports.jpg"
+                  alt="Illustrative in-game view of the campus sports ground used by the Playground Dash course."
+                  className="absolute inset-0 h-full w-full object-cover"
+                  width={1280}
+                  height={720}
+                  loading="lazy"
+                  decoding="async"
+                />
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(6,18,11,0.18),rgba(6,18,11,0.9))]" aria-hidden="true" />
+                <span className="absolute left-5 top-5 border border-[#d6ba7e]/55 bg-[#0b1711]/80 px-3 py-1.5 font-ui text-[9px] uppercase tracking-[0.2em] text-[#e3cb98]">
+                  Obstacle course · Playable
+                </span>
+                <div className="absolute inset-x-5 bottom-5 flex flex-wrap gap-2">
+                  {ESCAPE_LEVELS.map((level) => (
+                    <span
+                      key={level.id}
+                      className="border border-[#f2eadb]/22 bg-[#0b1711]/75 px-2.5 py-1.5 font-ui text-[8px] uppercase tracking-[0.14em] text-[#d9d2c2]"
+                    >
+                      {String(level.number).padStart(2, "0")} · {level.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col justify-center p-6 sm:p-9">
+                <SectionEyebrow>Campus Escape · Three timed courses</SectionEyebrow>
+                <h3 className="mt-4 font-display text-[clamp(2.2rem,4vw,3.5rem)] leading-[0.92] text-[#f5ead4]">
+                  CAMPUS ESCAPE
+                </h3>
+                <p className="mt-4 max-w-[440px] font-ui text-sm leading-6 text-[#c8c0ae]">
+                  Run the sports ground, thread the academic lawns and take on the hostel route.
+                  Clear obstacles, collect energy tokens and reach the finish before the timer.
+                </p>
+                <p className="mt-3 max-w-[440px] font-ui text-[11px] leading-5 text-[#8f9587]">
+                  Three courses · three difficulties · personal XP and local records. No house
+                  points and no change to your house assignment.
+                </p>
+                <div className="mt-6">
+                  <FocusLink href="/play">RUN CAMPUS ESCAPE</FocusLink>
+                </div>
+                <p className="mt-3 font-ui text-[9px] uppercase tracking-[0.16em] text-[#777f72]">
+                  Adventure menu → Campus Escape after entering
+                </p>
+              </div>
+            </article>
 
             <div className="mt-12 border border-[#f2eadb]/14 bg-[#0e1d15]">
               <div className="flex flex-col gap-3 border-b border-[#f2eadb]/12 px-5 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-7">
@@ -926,6 +987,10 @@ function Landing() {
                             ? `${saved.nightAttempts} attempt${saved.nightAttempts === 1 ? "" : "s"}`
                             : "not started"}
                       </p>
+                      <p>
+                        Campus Escape · {saved.escapeCompleted}/{saved.escapeTotal} courses
+                      </p>
+                      <p>Escape best · {saved.escapeBest > 0 ? saved.escapeBest : "—"}</p>
                     </div>
 
                     <div className="mt-7 flex flex-wrap items-center gap-4">
@@ -1062,8 +1127,8 @@ function Landing() {
             <div>
               <p className="font-ui text-[9px] uppercase tracking-[0.22em] text-[#777f72]">The campus</p>
               <p className="mt-4 font-ui text-[12px] leading-6 text-[#8f9587]">
-                Four houses. A campus tour. One midnight caper. Built as a small, walkable story
-                you can finish in a browser.
+                Four houses. A campus tour. One midnight caper. An obstacle course. Built as a
+                small, walkable story you can finish in a browser.
               </p>
               <p className="mt-5 flex items-center gap-2 font-ui text-[9px] uppercase tracking-[0.16em] text-[#777f72]">
                 <span className="h-1.5 w-1.5 bg-[#78a982]" aria-hidden="true" />
