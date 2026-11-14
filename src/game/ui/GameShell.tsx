@@ -29,6 +29,8 @@ import { GameStore, useGameState } from "../core/GameStore";
 import { SaveSystem } from "../core/SaveSystem";
 import { DEFAULT_SETTINGS, type GameUIState } from "../core/types";
 import { getHouse } from "../data/houses";
+import { AdventureMenu } from "./AdventureMenu";
+import { CampusEscape } from "./CampusEscape";
 import { CampusMap } from "./CampusMap";
 import { CampusPlan } from "./CampusPlan";
 import { CharacterCreation } from "./CharacterCreation";
@@ -87,7 +89,8 @@ export function GameShell() {
     state.screen === "dialogue" ||
     state.screen === "notice" ||
     state.screen === "ending" ||
-    state.screen === "night-result";
+    state.screen === "night-result" ||
+    state.screen === "adventure";
 
   return (
     <div className="relative h-[100dvh] w-full select-none overflow-hidden bg-[#0a0907] font-ui text-foreground">
@@ -151,6 +154,14 @@ export function GameShell() {
 
       {ready && state.screen === "night-result" && state.nightResult && (
         <NightResultOverlay state={state} engine={engine} />
+      )}
+
+      {ready && state.screen === "adventure" && (
+        <AdventureMenu state={state} engine={engine} />
+      )}
+
+      {ready && state.screen === "escape" && (
+        <CampusEscape state={state} engine={engine} />
       )}
 
       {ready && state.profileOpen && state.profile && (
@@ -765,15 +776,13 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
           {nightAvailable && (
             <MenuRow
               index="04"
-              label={state.night?.active ? "Resume caper" : "Operation Midnight Mischief"}
+              label={state.night?.active ? "Resume caper" : "Adventure menu"}
               detail={
                 state.night?.active
                   ? `Fictional stealth caper · attempt ${state.night.attempts}`
-                  : state.profile?.achievements.includes("midnight-garden")
-                    ? "Stealth caper · replay (no duplicate reward)"
-                    : "Fictional stealth caper · no house points"
+                  : "Operation Midnight Mischief or Campus Escape"
               }
-              onClick={() => (state.night?.active ? engine?.resume() : engine?.startNight())}
+              onClick={() => (state.night?.active ? engine?.resume() : engine?.openAdventure())}
             />
           )}
           {state.profile && (

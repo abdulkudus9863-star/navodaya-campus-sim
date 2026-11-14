@@ -103,16 +103,16 @@ export function CampusPlan({
               Operation Midnight Mischief
             </h3>
             <p className="mt-1.5 font-ui text-[10px] uppercase tracking-[0.22em] text-[#c5ae7c]/70">
-              Fictional stealth caper
+              Adventure menu · stealth & obstacle course
             </p>
             <p className="mt-4 max-w-md font-ui text-[12px] leading-relaxed text-foreground/55">
-              A playful after-hours game invented by your roommate. Search the garden for four
-              club markers, avoid torchlight and patrol cones, and sneak back to the hostel. No
-              real theft and no house points.
+              Pick a fictional after-hours caper: sneak through the garden in Operation Midnight
+              Mischief, or run the Campus Escape obstacle course. Personal XP only — no house
+              points and no real trespassing.
             </p>
             <span className="mt-6 flex items-center justify-between border-t border-[#b5a06d]/20 pt-3 font-ui text-[9px] uppercase tracking-[0.22em] text-[#dfc99b]/60">
               <span className="inline-flex items-center gap-1.5">
-                <ShieldCheck className="size-3" /> Fictional campus caper
+                <ShieldCheck className="size-3" /> Two fictional capers
               </span>
               <ArrowRight className="size-3.5 transition group-hover:translate-x-1" />
             </span>

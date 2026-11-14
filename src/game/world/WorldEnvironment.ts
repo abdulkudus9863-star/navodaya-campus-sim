@@ -1752,7 +1752,11 @@ export class WorldEnvironment {
   }
 
   private buildNpc(): void {
-    const rig = createCharacter({ uniform: "#2878DB", skin: "#a8734c", senior: true });
+    const rig = createCharacter({
+      uniform: getHouse("nilgiri")?.color ?? "#16A34A",
+      skin: "#a8734c",
+      senior: true,
+    });
     rig.group.position.copy(this.npcPosition);
     rig.group.rotation.y = 0.25;
     this.group.add(rig.group);

@@ -32,7 +32,7 @@ export function NightResultOverlay({
         className="pointer-events-none fixed inset-0 opacity-55"
         style={{
           background: success
-            ? `radial-gradient(80% 60% at 50% 20%, ${house?.color ?? "#159447"}25, transparent 62%), radial-gradient(60% 50% at 10% 70%, #1b3a2a66, transparent 65%)`
+            ? `radial-gradient(80% 60% at 50% 20%, ${house?.color ?? "#2563EB"}25, transparent 62%), radial-gradient(60% 50% at 10% 70%, #1b3a2a66, transparent 65%)`
             : "radial-gradient(75% 60% at 50% 20%, #8d342833, transparent 62%), radial-gradient(60% 50% at 90% 70%, #42332666, transparent 65%)",
         }}
       />

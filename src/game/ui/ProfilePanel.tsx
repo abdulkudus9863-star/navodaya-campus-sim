@@ -4,6 +4,13 @@ import type { GameEngine } from "../core/GameEngine";
 import type { GameUIState } from "../core/types";
 import { ACHIEVEMENTS, getAchievement, xpProgress } from "../data/achievements";
 import { buildStandings } from "../data/competitions";
+import {
+  ESCAPE_DIFFICULTY_LABELS,
+  escapeLevelNumber,
+  escapeRecordViews,
+  formatEscapeTime,
+  totalEscapeXp,
+} from "../data/escape";
 import { getHouse } from "../data/houses";
 import { getHouseCaptain, getHousePrefect, getHouseRoster, getStudent } from "../data/students";
 import { HouseEmblem, StudentAvatar } from "./HouseVisuals";
@@ -40,6 +47,11 @@ export function ProfilePanel({
   const houseChampionships = standings.championships.filter(
     (record) => record.winner === profile.houseId,
   );
+  const escape = state.escapeSave;
+  const escapeRecords = escape ? escapeRecordViews(escape) : [];
+  const escapeXp = escape ? totalEscapeXp(escape) : 0;
+  const escapeCompleted = new Set(escape?.records.map((record) => record.levelId) ?? []).size;
+  const escapeBest = escapeRecords.reduce((best, record) => Math.max(best, record.bestScore), 0);
 
   return (
     <div
@@ -254,6 +266,55 @@ export function ProfilePanel({
                 Points come from approved competition results only. Exploring and the fictional
                 midnight caper never award house points, and standings are not stored in the
                 editable local save.
+              </p>
+            </section>
+
+            <section className="border border-foreground/12 bg-[#0f0d0a]/85 p-5 sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="label-cinema text-primary/80">Campus Escape</p>
+                  <h3 className="mt-1 font-display text-2xl text-[#f4ead6]">
+                    Level {escape ? escapeLevelNumber(escape) : 1} · {escapeCompleted}/3 challenges
+                  </h3>
+                </div>
+                <span className="border border-[#d9b56d]/30 px-2.5 py-1 font-ui text-[8px] uppercase tracking-[0.18em] text-[#e8d4a8]/75">
+                  {escapeXp} mini-game XP
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden border border-foreground/10 bg-foreground/10">
+                <div className="bg-[#12100c] p-3">
+                  <p className="label-cinema text-[8px] text-foreground/35">Best score</p>
+                  <p className="mt-1 font-display text-xl text-foreground/85">{escapeBest || "—"}</p>
+                </div>
+                <div className="bg-[#12100c] p-3">
+                  <p className="label-cinema text-[8px] text-foreground/35">Completed</p>
+                  <p className="mt-1 font-display text-xl text-foreground/85">{escapeCompleted} / 3</p>
+                </div>
+                <div className="bg-[#12100c] p-3">
+                  <p className="label-cinema text-[8px] text-foreground/35">Achievements</p>
+                  <p className="mt-1 font-display text-xl text-foreground/85">
+                    {escape?.achievements.length ?? 0} / 5
+                  </p>
+                </div>
+              </div>
+              {escapeRecords.length > 0 ? (
+                <div className="mt-3 space-y-1.5">
+                  {escapeRecords.slice(0, 5).map((record) => (
+                    <div key={`${record.levelId}:${record.difficulty}`} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-foreground/8 py-1.5 last:border-0">
+                      <span className="font-display text-sm text-foreground/75">{record.levelName}</span>
+                      <span className="font-ui text-[8px] uppercase tracking-[0.14em] text-foreground/35">
+                        {ESCAPE_DIFFICULTY_LABELS[record.difficulty]} · best {record.bestScore} · {formatEscapeTime(record.bestTime)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 border border-foreground/10 bg-black/20 p-3 font-ui text-[10px] text-foreground/35">
+                  No Campus Escape records yet. Playground Dash is open from the Adventure menu.
+                </p>
+              )}
+              <p className="mt-3 font-ui text-[9px] leading-relaxed text-foreground/25">
+                Personal obstacle-course XP only. These records are stored with your player ID and never add official house points.
               </p>
             </section>
 

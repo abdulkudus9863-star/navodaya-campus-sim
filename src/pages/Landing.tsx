@@ -81,8 +81,8 @@ const MINI_GAMES = [
   },
   {
     name: "Campus Escape",
-    description: "A timed route out of the academic block. Still in development.",
-    available: false,
+    description: "Run three campus obstacle courses, collect energy tokens and finish before the timer.",
+    available: true,
   },
   {
     name: "Mystery Room",
@@ -535,8 +535,8 @@ function Landing() {
                   </h3>
                 </div>
                 <p className="max-w-[430px] font-ui text-[11px] leading-5 text-[#a9ad9f]">
-                  Only Night Sneak is playable inside the caper today. Everything else is clearly
-                  marked as upcoming work.
+                  Night Sneak and Campus Escape are playable inside the adventure menu today.
+                  Everything else is clearly marked as upcoming work.
                 </p>
               </div>
 

@@ -13,6 +13,7 @@ import { levelFromXp, maxXpForAchievements, validAchievementIds } from "../data/
 import { DEFAULT_CHARACTER_ID, DEFAULT_HOUSE_ID, isHouseId } from "../data/houses";
 import { GARDEN_ITEM_IDS, NIGHT_TOTAL_STEPS, isGardenItemId } from "../data/night";
 import { newPlayerProfile } from "../data/profile";
+import { emptyEscapeSave, sanitizeEscape } from "../data/escape";
 import { getStudent, validateCharacterSelection } from "../data/students";
 import { sanitizeExploration } from "../systems/ExplorationSystem";
 
@@ -184,6 +185,10 @@ function sanitizeSave(raw: unknown): SaveData | null {
     profile,
     night: sanitizeNight(source.night),
     exploration: sanitizeExploration(source.exploration),
+    escape:
+      version === 1
+        ? emptyEscapeSave(profile.playerId)
+        : sanitizeEscape(source.escape, profile.playerId),
   };
 }
 

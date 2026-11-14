@@ -38,6 +38,7 @@ export class GameStore {
       profile: null,
       night: null,
       nightResult: null,
+      escapeSave: null,
       gardenDuty: null,
       exploration: null,
       planOpen: false,
@@ -127,6 +128,7 @@ export class GameStore {
       quality: data.settings.quality,
       hasSave: true,
       playtime: data.playtime,
+      escapeSave: data.escape,
     });
   }
 }

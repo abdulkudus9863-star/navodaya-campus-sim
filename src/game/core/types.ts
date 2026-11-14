@@ -6,6 +6,7 @@
 import type { CampusMapView } from "../data/campus";
 import type { GardenItemId } from "../data/night";
 import type { HouseId } from "../data/houses";
+import type { EscapeSave } from "../data/escape";
 
 export type Quality = "low" | "medium" | "high";
 
@@ -17,7 +18,9 @@ export type Screen =
   | "dialogue"
   | "notice"
   | "ending"
-  | "night-result";
+  | "night-result"
+  | "adventure"
+  | "escape";
 
 export interface GameSettings {
   quality: Quality;
@@ -91,6 +94,7 @@ export interface SaveData {
   profile: PlayerProfileSave;
   night: NightSave;
   exploration: ExplorationSave;
+  escape: EscapeSave;
 }
 
 export interface DialogueChoice {
@@ -204,6 +208,7 @@ export interface GameUIState {
   profile: PlayerProfileView | null;
   night: NightView | null;
   nightResult: NightResultView | null;
+  escapeSave: EscapeSave | null;
   gardenDuty: GardenDutyView | null;
   exploration: ExplorationView | null;
   planOpen: boolean;

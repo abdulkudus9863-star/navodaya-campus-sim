@@ -36,6 +36,23 @@ import {
 } from "../data/students";
 import { awardProgress, newPlayerProfile, toProfileView } from "../data/profile";
 import { GARDEN_ITEMS, NIGHT_STEPS, gardenItem, type GardenItemId } from "../data/night";
+import {
+  ESCAPE_LEVELS,
+  buildEscapeCourse,
+  calculateEscapeScore,
+  emptyEscapeSave,
+  escapeAchievementsForRun,
+  getEscapeLevel,
+  getEscapeRecord,
+  isEscapeDifficulty,
+  isEscapeLevelId,
+  sanitizeEscape,
+  type EscapeCheckpointSave,
+  type EscapeDifficulty,
+  type EscapeLevelId,
+  type EscapeRunResult,
+  type EscapeSave,
+} from "../data/escape";
 
 export const NOTICE_CONTENT: NoticeView = {
   title: "Navodaya Vidyalaya",
@@ -82,6 +99,7 @@ export class GameEngine {
   private gardenDutyTimer: number | null = null;
   private audio = new AudioSystem();
   private profile: PlayerProfileSave | null = null;
+  private escapeData: EscapeSave | null = null;
   private nightMode = false;
   private nightCaughtHandled = false;
   private suspicion = 0;
@@ -219,8 +237,13 @@ export class GameEngine {
       const saved = this.saveSystem.load();
       if (saved.ok) {
         this.profile = saved.data.profile;
+        this.escapeData = saved.data.escape;
         this.store.hydrateSave(saved.data);
-        this.store.patch({ playtime: Math.round(saved.data.playtime), profile: toProfileView(saved.data.profile) });
+        this.store.patch({
+          playtime: Math.round(saved.data.playtime),
+          profile: toProfileView(saved.data.profile),
+          escapeSave: saved.data.escape,
+        });
         this.applySettings(saved.data.settings, { announce: false });
         this.store.setCharacter(saved.data.character);
         const house = getHouse(saved.data.profile.houseId);
@@ -307,6 +330,33 @@ export class GameEngine {
       assign(houseId: string, characterId: string) {
         return engine.startNewGameWith(houseId, characterId);
       },
+      escape: {
+        open() {
+          return engine.openEscape();
+        },
+        close() {
+          engine.closeEscape();
+        },
+        select(levelId: string, difficulty: string) {
+          if (!isEscapeLevelId(levelId) || !isEscapeDifficulty(difficulty)) return false;
+          engine.setEscapeSelection(levelId, difficulty);
+          return true;
+        },
+        snapshot() {
+          const data = engine.escapeData;
+          return {
+            screen: engine.store.getState().screen,
+            difficulty: data?.difficulty ?? null,
+            lastLevelId: data?.lastLevelId ?? null,
+            records: data?.records ? [...data.records] : [],
+            achievements: data?.achievements ? [...data.achievements] : [],
+            checkpoint: data?.checkpoint ? { ...data.checkpoint } : null,
+            profileAchievements: engine.profile ? [...engine.profile.achievements] : [],
+            xp: engine.profile?.xp ?? 0,
+            houseId: engine.profile?.houseId ?? null,
+          };
+        },
+      },
       choosePlan(choice: "explore" | "stealth" | "later") {
         return engine.choosePlan(choice);
       },
@@ -374,6 +424,7 @@ export class GameEngine {
     this.night = new NightMissionSystem();
     this.nightCaughtHandled = false;
     this.suspicion = 0;
+    this.escapeData = null;
     this.setCrouching(false);
     this.store.patch({
       screen: "creation",
@@ -386,6 +437,7 @@ export class GameEngine {
       night: null,
       nightResult: null,
       gardenDuty: null,
+      escapeSave: null,
     });
     this.input.setEnabled(false);
     this.input.reset();
@@ -414,6 +466,7 @@ export class GameEngine {
     void this.audio.unlock();
     const profile = newPlayerProfile(characterId, houseId, { achievements: ["house-colours"] });
     this.profile = profile;
+    this.escapeData = emptyEscapeSave(profile.playerId);
     const view = toProfileView(profile);
     this.night = new NightMissionSystem();
     this.exploration.reset();
@@ -448,6 +501,7 @@ export class GameEngine {
       planOpen: false,
       campusMapOpen: false,
       campusMap: null,
+      escapeSave: this.escapeData,
     });
     this.enterPlaying(true);
     this.saveGame(false);
@@ -479,6 +533,7 @@ export class GameEngine {
       return false;
     }
     this.profile = data.profile;
+    this.escapeData = data.escape;
     this.applySettings(data.settings, { announce: false });
     this.store.setCharacter(data.character);
     const house = getHouse(data.profile.houseId);
@@ -532,6 +587,7 @@ export class GameEngine {
       campusMapOpen: false,
       campusMap: null,
       crouching: false,
+      escapeSave: this.escapeData,
     });
     this.enterPlaying(true);
     this.audio.uiClick();
@@ -608,9 +664,228 @@ export class GameEngine {
       this.openCampusMap("playing");
       return true;
     }
-    if (choice === "stealth") return this.startNight();
+    if (choice === "stealth") return this.openAdventure();
     this.resume();
     return true;
+  }
+
+  /* --------------------------------------------------------- campus escape */
+
+  private escapeState(): EscapeSave {
+    if (!this.profile) throw new Error("Campus Escape requires a player profile.");
+    if (!this.escapeData || this.escapeData.playerId !== this.profile.playerId) {
+      this.escapeData = emptyEscapeSave(this.profile.playerId);
+    }
+    return this.escapeData;
+  }
+
+  openAdventure(): boolean {
+    const state = this.store.getState();
+    if (!this.profile) return false;
+    if (this.night.active) return false;
+    if (state.screen === "playing") this.pause();
+    if (this.store.getState().screen !== "paused" && this.store.getState().screen !== "escape") {
+      return false;
+    }
+    this.store.patch({
+      screen: "adventure",
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
+      settingsOpen: false,
+      profileOpen: false,
+      prompt: null,
+      escapeSave: this.escapeState(),
+    });
+    this.input.setEnabled(false);
+    this.input.reset();
+    this.releasePointerLock();
+    this.exploration.markPlanSeen();
+    this.saveGame(false);
+    this.audio.uiClick();
+    return true;
+  }
+
+  closeAdventure(): void {
+    if (this.store.getState().screen !== "adventure") return;
+    this.store.patch({ screen: "paused", planOpen: false, campusMapOpen: false });
+    this.audio.uiClick();
+  }
+
+  openEscape(): boolean {
+    if (!this.profile) return false;
+    const data = this.escapeState();
+    const state = this.store.getState();
+    if (state.screen === "playing") this.pause();
+    this.store.patch({
+      screen: "escape",
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
+      settingsOpen: false,
+      profileOpen: false,
+      prompt: null,
+      nightResult: null,
+      escapeSave: { ...data, records: [...data.records], achievements: [...data.achievements] },
+    });
+    this.input.setEnabled(false);
+    this.input.reset();
+    this.releasePointerLock();
+    this.audio.uiClick();
+    this.saveGame(false);
+    return true;
+  }
+
+  closeEscape(): void {
+    if (this.store.getState().screen !== "escape") return;
+    const data = this.escapeData;
+    this.store.patch({
+      screen: "adventure",
+      prompt: null,
+      escapeSave: data
+        ? { ...data, records: [...data.records], achievements: [...data.achievements] }
+        : null,
+    });
+    this.saveGame(false);
+    this.audio.uiClick();
+  }
+
+  exitEscape(): void {
+    this.closeEscape();
+  }
+
+  setEscapeSelection(levelId: EscapeLevelId, difficulty: EscapeDifficulty): void {
+    if (!this.profile || !isEscapeLevelId(levelId) || !isEscapeDifficulty(difficulty)) return;
+    const data = this.escapeState();
+    this.escapeData = { ...data, lastLevelId: levelId, difficulty };
+    this.store.patch({
+      escapeSave: {
+        ...this.escapeData,
+        records: [...this.escapeData.records],
+        achievements: [...this.escapeData.achievements],
+      },
+    });
+    this.saveGame(false);
+  }
+
+  saveEscapeCheckpoint(checkpoint: EscapeCheckpointSave): void {
+    if (!this.profile) return;
+    if (!isEscapeLevelId(checkpoint.levelId) || !isEscapeDifficulty(checkpoint.difficulty)) return;
+    if (!Number.isFinite(checkpoint.checkpointIndex) || !Number.isFinite(checkpoint.x)) return;
+    const data = this.escapeState();
+    const safe = sanitizeEscape(
+      {
+        ...data,
+        checkpoint: {
+          ...checkpoint,
+          checkpointIndex: Math.max(0, Math.floor(checkpoint.checkpointIndex)),
+          elapsed: Math.max(0, checkpoint.elapsed),
+          tokens: Array.isArray(checkpoint.tokens)
+            ? checkpoint.tokens.filter((id): id is string => typeof id === "string")
+            : [],
+          collisions: Math.max(0, Math.floor(checkpoint.collisions)),
+          falls: Math.max(0, Math.floor(checkpoint.falls)),
+          savedAt: Date.now(),
+        },
+      },
+      this.profile.playerId,
+    );
+    this.escapeData = safe;
+    this.store.patch({ escapeSave: safe });
+    this.saveGame(false);
+  }
+
+  clearEscapeCheckpoint(): void {
+    if (!this.profile) return;
+    const data = this.escapeState();
+    if (!data.checkpoint) return;
+    this.escapeData = { ...data, checkpoint: null };
+    this.store.patch({ escapeSave: this.escapeData });
+    this.saveGame(false);
+  }
+
+  /**
+   * Re-scores the run locally before writing a record. The browser save is not
+   * an authoritative anti-cheat boundary, but every value is validated and the
+   * client can never award house points through this game.
+   */
+  recordEscapeResult(result: EscapeRunResult): {
+    newAchievements: string[];
+    isBest: boolean;
+  } {
+    if (!this.profile || !isEscapeLevelId(result.levelId) || !isEscapeDifficulty(result.difficulty)) {
+      return { newAchievements: [], isBest: false };
+    }
+    const course = buildEscapeCourse(result.levelId, result.difficulty);
+    const safe = calculateEscapeScore({
+      course,
+      completed: result.completed === true,
+      elapsed: result.elapsed,
+      tokens: result.tokens,
+      checkpoints: result.checkpoints,
+      collisions: result.collisions,
+      falls: result.falls,
+    });
+    const data = this.escapeState();
+    const existing = getEscapeRecord(data, safe.levelId, safe.difficulty);
+    const newAchievementIds: string[] = [];
+    let records = data.records;
+    let isBest = false;
+
+    if (safe.completed) {
+      isBest = !existing || safe.score > existing.bestScore;
+      const nextRecord = {
+        levelId: safe.levelId,
+        difficulty: safe.difficulty,
+        bestScore: Math.max(existing?.bestScore ?? 0, safe.score),
+        bestTime: Math.min(existing?.bestTime ?? Number.POSITIVE_INFINITY, safe.elapsed),
+        completions: (existing?.completions ?? 0) + 1,
+        updatedAt: Date.now(),
+      };
+      records = existing
+        ? data.records.map((record) =>
+            record.levelId === safe.levelId && record.difficulty === safe.difficulty
+              ? nextRecord
+              : record,
+          )
+        : [...data.records, nextRecord];
+    }
+
+    const completedLevels = new Set(records.map((record) => record.levelId)).size;
+    const earned = escapeAchievementsForRun({ result: safe, completedLevels }).filter(
+      (id) => !data.achievements.includes(id) && Boolean(getEscapeLevel(safe.levelId)),
+    );
+    for (const id of earned) {
+      if (!this.profile) break;
+      const award = awardProgress(this.profile, 0, id);
+      this.profile = award.profile;
+      if (award.achievementAdded) newAchievementIds.push(id);
+    }
+
+    const achievements = Array.from(new Set([...data.achievements, ...newAchievementIds]));
+    this.escapeData = {
+      ...data,
+      difficulty: safe.difficulty,
+      lastLevelId: safe.levelId,
+      records,
+      achievements,
+      checkpoint: safe.completed ? null : data.checkpoint,
+    };
+    this.store.patch({
+      escapeSave: this.escapeData,
+      profile: this.profile ? toProfileView(this.profile) : null,
+    });
+    this.saveGame(false);
+    if (newAchievementIds.length > 0) {
+      this.showToast(`Campus Escape achievement unlocked · ${newAchievementIds.length} new.`);
+    }
+    return { newAchievements: newAchievementIds, isBest };
+  }
+
+  /** Small audio hooks kept separate from the three.js scene. */
+  escapeSound(kind: "start" | "token" | "checkpoint" | "hit" | "fall" | "win" | "fail"): void {
+    if (kind === "token" || kind === "checkpoint" || kind === "win") this.audio.chime();
+    else this.audio.uiClick();
   }
 
   openCampusMap(returnTo?: "playing" | "paused"): boolean {
@@ -781,7 +1056,14 @@ export class GameEngine {
   openProfile(): void {
     const state = this.store.getState();
     if (!state.profile) return;
-    if (state.screen !== "playing" && state.screen !== "paused" && state.screen !== "menu") return;
+    if (
+      state.screen !== "playing" &&
+      state.screen !== "paused" &&
+      state.screen !== "menu" &&
+      state.screen !== "adventure"
+    ) {
+      return;
+    }
     if (state.settingsOpen) return;
     this.store.patch({ profileOpen: true });
     this.store.setPrompt(null);
@@ -900,6 +1182,7 @@ export class GameEngine {
       profile: this.profile,
       night: this.night.toSave(),
       exploration: this.exploration.toSave(),
+      escape: this.escapeData ?? emptyEscapeSave(this.profile.playerId),
     };
     const ok = this.saveSystem.save(data);
     if (ok) {
@@ -918,6 +1201,7 @@ export class GameEngine {
     this.night = new NightMissionSystem();
     this.exploration.reset();
     this.profile = null;
+    this.escapeData = null;
     this.nightMode = false;
     this.cancelGardenDuty(false);
     this.nightCaughtHandled = false;
@@ -946,6 +1230,7 @@ export class GameEngine {
       ending: null,
       prompt: null,
       playtime: 0,
+      escapeSave: null,
     });
     this.store.setMission(this.mission.view());
     this.input.setEnabled(false);
@@ -1663,6 +1948,12 @@ export class GameEngine {
 
   private handleGlobalKeyDown = (event: KeyboardEvent): void => {
     const state = this.store.getState();
+    // Campus Escape owns its keyboard controls while it is mounted.
+    if (state.screen === "escape") return;
+    if (state.screen === "adventure") {
+      if (event.code === "Escape") this.closeAdventure();
+      return;
+    }
     if (event.code === "Escape") {
       if (state.planOpen) {
         this.choosePlan("later");
@@ -1773,21 +2064,26 @@ export class GameEngine {
 
     const visibleScreens = ["playing", "paused", "dialogue", "notice", "ending", "night-result"];
     this.player.rig.group.visible = visibleScreens.includes(state.screen);
-    const noise =
-      simulating && this.player.moving
-        ? this.crouching
-          ? 0.05
-          : this.player.running
-            ? 1
-            : 0.45
-        : 0;
-    this.world.update(dt, this.elapsed, this.player.position, this.crouching, noise);
-    if (simulating && this.nightMode && this.night.active) {
-      this.updateNightProgress(dt, noise);
+    const canvasOverlay = state.screen === "escape" || state.screen === "adventure";
+    if (!canvasOverlay) {
+      const noise =
+        simulating && this.player.moving
+          ? this.crouching
+            ? 0.05
+            : this.player.running
+              ? 1
+              : 0.45
+          : 0;
+      this.world.update(dt, this.elapsed, this.player.position, this.crouching, noise);
+      if (simulating && this.nightMode && this.night.active) {
+        this.updateNightProgress(dt, noise);
+      }
     }
     this.measurePerformance(dt, simulating);
 
-    if (!this.renderer) return;
+    // The 2.5D escape canvas is a complete presentation layer. Freezing the
+    // three.js loop behind it keeps mid-range phones and software WebGL stable.
+    if (!this.renderer || canvasOverlay) return;
     this.renderer.render(this.scene, this.cameraController.camera);
   };
 

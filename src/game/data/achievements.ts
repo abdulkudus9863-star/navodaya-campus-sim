@@ -45,6 +45,31 @@ export const ACHIEVEMENTS: readonly AchievementDefinition[] = [
     name: "Campus Life",
     description: "Visited every stop on the interpretive campus route.",
   },
+  {
+    id: "escape-first-run",
+    name: "First Run",
+    description: "Completed your first Campus Escape level.",
+  },
+  {
+    id: "escape-collector",
+    name: "Collector",
+    description: "Collected every energy token in a Campus Escape level.",
+  },
+  {
+    id: "escape-perfect",
+    name: "Perfect Run",
+    description: "Finished a Campus Escape level without falling or colliding.",
+  },
+  {
+    id: "escape-speed",
+    name: "Speed Runner",
+    description: "Finished a Campus Escape level under its target time.",
+  },
+  {
+    id: "escape-champion",
+    name: "Campus Champion",
+    description: "Completed all three Campus Escape levels.",
+  },
 ];
 
 export function getAchievement(id: string): AchievementDefinition | undefined {
@@ -73,6 +98,11 @@ export const ACHIEVEMENT_XP: Record<string, number> = {
   "campus-wanderer": 40,
   "campus-cartographer": 80,
   "campus-life": 120,
+  "escape-first-run": 0,
+  "escape-collector": 0,
+  "escape-perfect": 0,
+  "escape-speed": 0,
+  "escape-champion": 0,
 };
 
 export function maxXpForAchievements(ids: readonly string[]): number {
