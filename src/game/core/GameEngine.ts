@@ -1749,8 +1749,8 @@ export class GameEngine {
       }
       return;
     }
-    if (target.kind === "notice") {
-      this.openNotice();
+    if (target.kind === "notice" || target.kind === "book") {
+      this.openNotice(target.notice ?? NOTICE_CONTENT, target.id === "notice-board");
       return;
     }
     if (target.kind === "door" && target.door) {
@@ -2108,13 +2108,13 @@ export class GameEngine {
     this.audio.chime();
   }
 
-  private openNotice(): void {
+  private openNotice(notice: NoticeView = NOTICE_CONTENT, countsForMission = false): void {
     this.input.setEnabled(false);
     this.releasePointerLock();
-    this.store.setNotice(NOTICE_CONTENT);
+    this.store.setNotice(notice);
     this.store.setScreen("notice");
     this.store.setPrompt(null);
-    this.completeStep("notice-board");
+    if (countsForMission) this.completeStep("notice-board");
     this.audio.uiClick();
   }
 

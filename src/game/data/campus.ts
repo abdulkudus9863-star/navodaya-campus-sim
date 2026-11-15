@@ -97,7 +97,7 @@ export const CAMPUS_LOCATIONS: readonly CampusLocationDefinition[] = [
     shortName: "Admin office",
     kind: "administration",
     description:
-      "The low administrative building beside the entrance: principal's office, staff room and records.",
+      "The low administrative building beside the entrance, with a walk-in reception, the principal's office, staff room and records area.",
     story:
       "The corridor smells of paper and tea. A hand-painted board reminds everyone that the office closes for assembly.",
     x: 13,
@@ -114,7 +114,7 @@ export const CAMPUS_LOCATIONS: readonly CampusLocationDefinition[] = [
     shortName: "Library",
     kind: "library",
     description:
-      "The Gyan Mandir library and reading room, with its shaded portico facing the academic side.",
+      "The Gyan Mandir library: a walk-in reading room with timber shelves, reading tables, a librarian's counter and a quiet corner.",
     story:
       "The reading room is quiet except for the ceiling fan and the occasional argument about which atlas is best.",
     x: -29,
@@ -131,7 +131,7 @@ export const CAMPUS_LOCATIONS: readonly CampusLocationDefinition[] = [
     shortName: "Science labs",
     kind: "laboratory",
     description:
-      "A separate laboratory wing for practical science, with the four lab bays described in the JNV building programme.",
+      "A separate laboratory wing for practical science, with a walk-in practical hall, demonstration bench and apparatus cupboards.",
     story:
       "The lab assistant keeps the good microscope behind glass and a handwritten list of who has not returned a prism.",
     x: 36,
@@ -148,7 +148,7 @@ export const CAMPUS_LOCATIONS: readonly CampusLocationDefinition[] = [
     shortName: "Dining hall",
     kind: "dining",
     description:
-      "Annapoorna, the dining hall and kitchen: the morning queue, the serving counter and the menu board.",
+      "Annapoorna: a walk-in dining hall with long tables, a serving counter, menu board and wash area. The kitchen wing stays staff-only.",
     story:
       "The kitchen bell is the most reliable clock on campus. The menu board is the most debated document.",
     x: 2,
@@ -165,7 +165,7 @@ export const CAMPUS_LOCATIONS: readonly CampusLocationDefinition[] = [
     shortName: "Sports ground",
     kind: "sports",
     description:
-      "The Khel Maidan oval, goalposts, track and the small pavilion on the eastern side of campus.",
+      "The Khel Maidan oval, goalposts, track and pavilion, plus the outdoor basketball and volleyball courts behind the labs.",
     story:
       "The oval is used for assembly practice, football, athletics and the annual argument about boundary rules.",
     x: 37,
