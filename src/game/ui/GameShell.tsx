@@ -35,6 +35,7 @@ import { CampusMap } from "./CampusMap";
 import { CampusPlan } from "./CampusPlan";
 import { CharacterCreation } from "./CharacterCreation";
 import { HouseEmblem } from "./HouseVisuals";
+import { InteractionMenu } from "./InteractionMenu";
 import { MobileControls } from "./MobileControls";
 import { NightResultOverlay } from "./NightResult";
 import { ProfilePanel } from "./ProfilePanel";
@@ -626,15 +627,14 @@ function Hud({
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          data-testid="interaction-prompt"
           className={`absolute left-1/2 -translate-x-1/2 ${state.isTouch ? "bottom-[188px]" : "bottom-10"}`}
         >
-          <div className="hud-panel flex items-center gap-3 rounded-sm px-4 py-2.5">
-            <span className="flex size-6 items-center justify-center rounded-[3px] border border-primary/50 font-ui text-[10px] text-primary">
-              {state.isTouch ? "•" : "E"}
-            </span>
-            <span className="font-ui text-xs tracking-wide text-foreground/90">{state.prompt}</span>
-          </div>
+          <InteractionMenu
+            prompt={state.prompt}
+            isTouch={state.isTouch}
+            onOpenChange={(open) => engine?.setInteractionMenuOpen(open)}
+            onInteract={() => engine?.interact()}
+          />
         </motion.div>
       )}
 

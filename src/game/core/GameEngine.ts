@@ -772,6 +772,39 @@ export class GameEngine {
     this.multiplayer?.layer.setPlayers(players);
   }
 
+  private interactionMenuOpen = false;
+
+  /**
+   * Presentation-only pause for the UI SDK interaction menu. The world keeps
+   * animating, but movement, jump and interact are disabled until the menu
+   * closes. Pointer lock is released first so the engine does not mistake it
+   * for an Esc pause.
+   */
+  setInteractionMenuOpen(open: boolean): void {
+    if (this.disposed) return;
+    if (this.interactionMenuOpen === open) return;
+    this.interactionMenuOpen = open;
+    if (open) {
+      this.releasePointerLock();
+      this.input.reset();
+      this.input.setEnabled(false);
+      return;
+    }
+    const state = this.store.getState();
+    if (
+      state.screen === "playing" &&
+      !state.settingsOpen &&
+      !state.profileOpen &&
+      !state.planOpen &&
+      !state.campusMapOpen &&
+      !state.dialogue
+    ) {
+      this.input.reset();
+      this.input.setEnabled(true);
+      this.requestPointerLock();
+    }
+  }
+
   /** Stops WASD/joystick input while a chat sheet or panel owns the keyboard. */
   setMultiplayerUiOpen(open: boolean): void {
     if (!this.multiplayer) return;
@@ -2197,6 +2230,11 @@ export class GameEngine {
   }
 
   private handleGlobalKeyDown = (event: KeyboardEvent): void => {
+    // The UI SDK interaction menu owns the keyboard while it is open, and its
+    // own Escape dismissal may complete before this window listener runs.
+    if (this.interactionMenuOpen) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest("[data-navodaya-interaction-menu]")) return;
     const state = this.store.getState();
     // Campus Escape owns its keyboard controls while it is mounted.
     if (state.screen === "escape") return;
