@@ -6,10 +6,14 @@ import {
   MP_HIDE_AFTER_MS,
   MP_SAFE_ZONE,
   MP_VEGETABLES,
+  type MapRemoteMarker,
   type MultiplayerRemotePlayer,
 } from "../data/multiplayer";
 
 interface RemoteEntry {
+  memberId: string;
+  name: string;
+  houseId: string;
   rig: CharacterRig;
   label: THREE.Sprite;
   target: THREE.Vector3;
@@ -168,6 +172,27 @@ export class MultiplayerLayer {
     }
   }
 
+  /**
+   * Presentation snapshot for the live map. It reads only players already
+   * admitted to this room and omits stale/disconnected markers.
+   */
+  markers(): MapRemoteMarker[] {
+    const now = Date.now();
+    const markers: MapRemoteMarker[] = [];
+    for (const entry of this.players.values()) {
+      if (now - entry.lastSeen > MP_HIDE_AFTER_MS || !entry.rig.group.visible) continue;
+      markers.push({
+        memberId: entry.memberId,
+        name: entry.name,
+        houseId: entry.houseId,
+        x: Number(entry.rig.group.position.x.toFixed(2)),
+        z: Number(entry.rig.group.position.z.toFixed(2)),
+        lastSeen: entry.lastSeen,
+      });
+    }
+    return markers;
+  }
+
   /** Development-only snapshot used by the browser QA harness. */
   snapshot(): Array<{ x: number; z: number; crouching: boolean; anim: string; visible: boolean }> {
     return [...this.players.values()].map((entry) => ({
@@ -250,6 +275,9 @@ export class MultiplayerLayer {
     rig.group.add(label);
 
     return {
+      memberId: player.memberId,
+      name: player.name,
+      houseId: player.houseId,
       rig,
       label,
       target: new THREE.Vector3(player.x, player.y, player.z),

@@ -37,6 +37,7 @@ import {
   type MultiplayerRemotePlayer,
 } from "../data/multiplayer";
 import { DEFAULT_HOUSE_ID, HOUSES, getHouse, type HouseId } from "../data/houses";
+import type { LiveMapSnapshot } from "../data/liveMap";
 import {
   STUDENT_ROSTER,
   getStudent,
@@ -805,6 +806,20 @@ export class GameEngine {
     }
   }
 
+  /**
+   * Live presentation snapshot for the mini-map and expanded map. It reuses
+   * the authoritative player position and already-synchronised remote players;
+   * no parallel position system is introduced.
+   */
+  getMapSnapshot(): LiveMapSnapshot {
+    return {
+      playerX: this.player.position.x,
+      playerZ: this.player.position.z,
+      rotationY: this.player.rotationY,
+      remotes: this.multiplayer?.layer.markers() ?? [],
+    };
+  }
+
   /** Stops WASD/joystick input while a chat sheet or panel owns the keyboard. */
   setMultiplayerUiOpen(open: boolean): void {
     if (!this.multiplayer) return;
@@ -1148,6 +1163,10 @@ export class GameEngine {
     if (!this.profile) return false;
     if (this.nightMode || this.night.active) {
       this.showToast("The campus map is closed during nighttime activities.");
+      return false;
+    }
+    if (this.multiplayer) {
+      this.showToast("The expanded campus map is unavailable during co-op. The mini-map stays live.");
       return false;
     }
     if (!state.profile) return false;

@@ -1,54 +1,39 @@
 import { motion } from "framer-motion";
 import {
   ArrowRight,
-  BookOpen,
-  Building2,
   Check,
   Compass,
-  DoorOpen,
-  FlaskConical,
+  Flag,
   Footprints,
-  Home,
-  Landmark,
   Lock,
   MapPin,
   Moon,
-  Navigation,
-  Target,
-  Trophy,
-  Trees,
-  Utensils,
   X,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type { GameEngine } from "../core/GameEngine";
 import type { GameUIState } from "../core/types";
-import type { CampusLocationKind, CampusLocationView } from "../data/campus";
+import {
+  formatMapDistance,
+  mapAnchorForLocation,
+  mapWorldDistance,
+  type MapWaypoint,
+} from "../data/liveMap";
+import { CampusMapSurface } from "./CampusMapSurface";
 import { HouseEmblem } from "./HouseVisuals";
-
-const ICONS: Record<CampusLocationKind, ReactNode> = {
-  entrance: <DoorOpen className="size-3.5" />,
-  assembly: <Landmark className="size-3.5" />,
-  academic: <BookOpen className="size-3.5" />,
-  laboratory: <FlaskConical className="size-3.5" />,
-  library: <BookOpen className="size-3.5" />,
-  administration: <Building2 className="size-3.5" />,
-  dining: <Utensils className="size-3.5" />,
-  sports: <Trophy className="size-3.5" />,
-  garden: <Trees className="size-3.5" />,
-  hostel: <Home className="size-3.5" />,
-};
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 export function CampusMap({
   state,
   engine,
+  waypoint,
+  onWaypointChange,
+  multiplayer = false,
 }: {
   state: GameUIState;
   engine: GameEngine | null;
+  waypoint: MapWaypoint | null;
+  onWaypointChange: (waypoint: MapWaypoint | null) => void;
+  multiplayer?: boolean;
 }) {
   const map = state.campusMap;
   const [selectedId, setSelectedId] = useState("main-gate");
@@ -63,29 +48,34 @@ export function CampusMap({
 
   if (!map) return null;
   const selected = map.locations.find((location) => location.id === selectedId) ?? map.locations[0];
-  const assignedHostel = map.locations.find((location) => location.id === "house-hostel");
-  const playerLeft = clamp(50 + map.playerX * 0.92, 4, 96);
-  const playerTop = clamp(50 + map.playerZ * 0.95, 5, 95);
-  const locationPins = map.locations.filter((location) => !location.dynamicHostel);
-  const routePoints = [
-    "main-gate",
-    "assembly-ground",
-    "academic-block",
-    "library",
-    "science-labs",
-    "dining-hall",
-    "sports-ground",
-    "harbour-garden",
-    "house-hostel",
-  ]
-    .map((id) => map.locations.find((location) => location.id === id))
-    .filter((location): location is CampusLocationView => Boolean(location));
-  const route = routePoints.map((location) => `${location.mapX},${location.mapY}`).join(" ");
-  const missionStopIds = ["main-gate", "assembly-ground", "academic-block", "house-hostel"];
-  const missionStop = map.locations.find(
-    (location) => location.id === missionStopIds[state.mission.step],
-  );
-  const showMission = !state.mission.done && Boolean(missionStop);
+  const selectedAnchor = selected ? mapAnchorForLocation(selected) : null;
+  const distance =
+    selected && selectedAnchor
+      ? mapWorldDistance(map.playerX, map.playerZ, selectedAnchor.x, selectedAnchor.z)
+      : null;
+  const isWaypoint = Boolean(selected && waypoint?.id === selected.id);
+
+  const toggleWaypoint = () => {
+    if (!selected) return;
+    if (isWaypoint) {
+      onWaypointChange(null);
+      return;
+    }
+    const anchor = mapAnchorForLocation(selected);
+    onWaypointChange({
+      id: selected.id,
+      name: selected.name,
+      x: anchor.x,
+      z: anchor.z,
+    });
+  };
+
+  const travel = () => {
+    if (!selected) return;
+    if (engine?.travelToCampusLocation(selected.id) && isWaypoint) {
+      onWaypointChange(null);
+    }
+  };
 
   return (
     <div
@@ -108,7 +98,9 @@ export function CampusMap({
               <Compass className="size-5" />
             </span>
             <div>
-              <p className="label-cinema text-[#b9c69d]/75">Campus route · interpretive map</p>
+              <p className="label-cinema text-[#b9c69d]/75">
+                Live campus overview · north up
+              </p>
               <h2 className="mt-1 font-display text-3xl leading-none text-[#f1e8d5] sm:text-4xl">
                 Navodaya Campus
               </h2>
@@ -161,150 +153,17 @@ export function CampusMap({
               </button>
             </div>
 
-            <div className="relative aspect-[5/4] w-full overflow-hidden border border-[#687752]/35 bg-[#11170f] sm:aspect-[16/10]">
-              <div
-                className="absolute inset-0 opacity-80"
-                style={{
-                  backgroundColor: "#131a10",
-                  backgroundImage:
-                    "linear-gradient(0deg, rgba(146,163,118,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(146,163,118,0.07) 1px, transparent 1px)",
-                  backgroundSize: "8% 8%",
-                }}
+            <div className="mx-auto w-full max-w-[min(100%,72vh)]">
+              <CampusMapSurface
+                map={map}
+                state={state}
+                engine={engine}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                showOnlyUnlocked={showOnlyUnlocked}
+                waypoint={waypoint}
+                multiplayer={multiplayer}
               />
-              <div className="absolute left-[8%] top-[12%] h-[34%] w-[30%] rounded-[45%] border border-[#576943]/35 bg-[#1a2415]" />
-              <div className="absolute right-[7%] top-[8%] h-[26%] w-[27%] rounded-[45%] border border-[#576943]/30 bg-[#172113]" />
-              <div className="absolute bottom-[10%] left-[10%] h-[23%] w-[37%] rounded-[42%] border border-[#5b6d45]/30 bg-[#192314]" />
-              <div className="absolute bottom-[8%] right-[6%] h-[30%] w-[31%] rounded-[44%] border border-[#6a6042]/30 bg-[#1d2115]" />
-
-              <div className="absolute left-[39%] top-[15%] h-[8%] w-[22%] border border-[#7d8d6b]/20" />
-              <div className="absolute left-[39%] top-[32%] h-[8%] w-[22%] border border-[#7d8d6b]/20" />
-              <div className="absolute left-[39%] top-[50%] h-[7%] w-[22%] border border-[#7d8d6b]/20" />
-              <div className="absolute left-[39%] top-[68%] h-[8%] w-[22%] border border-[#7d8d6b]/20" />
-
-              <svg
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-                className="pointer-events-none absolute inset-0 size-full"
-                aria-hidden="true"
-              >
-                <polyline
-                  points={route}
-                  fill="none"
-                  stroke="#a9bb8d"
-                  strokeWidth="0.45"
-                  strokeDasharray="1.2 1.6"
-                  opacity="0.32"
-                />
-                <line x1="50" y1="96" x2="50" y2="88" stroke="#cfddba" strokeWidth="0.55" opacity="0.55" />
-              </svg>
-
-              <div className="pointer-events-none absolute left-1/2 top-[2.5%] -translate-x-1/2 font-ui text-[8px] uppercase tracking-[0.2em] text-[#b9c69d]/45">
-                Assembly side
-              </div>
-              <div className="pointer-events-none absolute bottom-[2%] left-1/2 -translate-x-1/2 font-ui text-[8px] uppercase tracking-[0.2em] text-[#b9c69d]/35">
-                South lawn · house hostels
-              </div>
-
-              {locationPins
-                .filter((location) => !showOnlyUnlocked || location.unlocked)
-                .map((location) => {
-                  const active = location.id === selectedId;
-                  const isGarden = location.id === "harbour-garden";
-                  return (
-                    <button
-                      key={location.id}
-                      type="button"
-                      onClick={() => setSelectedId(location.id)}
-                      className={`absolute z-10 -translate-x-1/2 -translate-y-1/2 focus:outline-none ${
-                        location.unlocked ? "" : "opacity-55"
-                      }`}
-                      style={{ left: `${location.mapX}%`, top: `${location.mapY}%` }}
-                      aria-label={`${location.name}${location.unlocked ? "" : " locked"}`}
-                      aria-pressed={active}
-                      title={location.name}
-                    >
-                      <span
-                        className={`mx-auto flex size-7 items-center justify-center rounded-full border shadow-[0_4px_18px_rgba(0,0,0,0.45)] transition ${
-                          active
-                            ? "border-[#e4ecd1] bg-[#ccd8b5] text-[#182112]"
-                            : isGarden
-                              ? "border-[#cbb37e]/60 bg-[#282317] text-[#dbc494]"
-                              : location.unlocked
-                                ? "border-[#a8b98a]/45 bg-[#1b2616] text-[#c7d4b0] hover:border-[#d6e2bf]"
-                                : "border-foreground/20 bg-[#14150f] text-foreground/35"
-                        }`}
-                      >
-                        {location.unlocked ? ICONS[location.kind] : <Lock className="size-3" />}
-                      </span>
-                      <span
-                        className={`mt-1 block max-w-[6.5rem] -translate-x-1/2 whitespace-nowrap border px-1.5 py-0.5 font-ui text-[7px] uppercase tracking-[0.12em] sm:text-[8px] ${
-                          active
-                            ? "border-[#cbd8b0]/50 bg-[#10150d]/95 text-[#e7ecd8]"
-                            : "border-transparent bg-[#0b0d09]/80 text-foreground/55"
-                        }`}
-                        style={{ marginLeft: "50%" }}
-                      >
-                        {location.shortName}
-                      </span>
-                    </button>
-                  );
-                })}
-
-              {showMission && missionStop && (
-                <div
-                  className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full"
-                  style={{ left: `${missionStop.mapX + 3.5}%`, top: `${missionStop.mapY - 3}%` }}
-                >
-                  <span className="flex items-center gap-1 border border-[#e0c58e]/45 bg-[#19160e]/95 px-1.5 py-0.5 font-ui text-[6px] uppercase tracking-[0.14em] text-[#e6d2a6] shadow-[0_4px_14px_rgba(0,0,0,0.5)]">
-                    <Target className="size-2.5" /> Objective
-                  </span>
-                </div>
-              )}
-
-              {map.houseMarkers.map((marker) => (
-                <button
-                  key={marker.houseId}
-                  type="button"
-                  onClick={() => {
-                    if (marker.isPlayerHouse) setSelectedId("house-hostel");
-                  }}
-                  className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 ${
-                    marker.isPlayerHouse ? "cursor-pointer" : "cursor-default"
-                  }`}
-                  style={{ left: `${marker.mapX}%`, top: `${marker.mapY}%` }}
-                  aria-label={
-                    marker.isPlayerHouse ? `Your hostel, ${marker.name}` : `${marker.name} hostel`
-                  }
-                  title={marker.isPlayerHouse ? `Your hostel · ${marker.name}` : marker.name}
-                >
-                  <span
-                    className={`block size-3 rounded-full border-2 shadow-[0_0_0_3px_rgba(10,12,8,0.85)] ${
-                      marker.isPlayerHouse ? "scale-125" : "opacity-70"
-                    }`}
-                    style={{ backgroundColor: marker.color, borderColor: marker.isPlayerHouse ? "#f3ead5" : marker.color }}
-                  />
-                  <span className="mt-1 block -translate-x-1/2 whitespace-nowrap font-ui text-[6px] uppercase tracking-[0.12em] text-foreground/45">
-                    {marker.shortName}
-                  </span>
-                </button>
-              ))}
-
-              {assignedHostel && (
-                <div className="pointer-events-none absolute bottom-[13%] right-[7%] z-20 flex items-center gap-1.5 border border-[#cbb37e]/25 bg-[#0b0d09]/85 px-2 py-1 font-ui text-[7px] uppercase tracking-[0.15em] text-[#d8c08f]/70">
-                  <Moon className="size-2.5" /> Caper area
-                </div>
-              )}
-
-              <div
-                className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2"
-                style={{ left: `${playerLeft}%`, top: `${playerTop}%` }}
-                title="Your current position"
-              >
-                <span className="absolute inset-0 -m-2 animate-ping rounded-full bg-[#dce8c8]/25" />
-                <span className="relative flex size-3.5 items-center justify-center rounded-full border border-[#f5efdd] bg-[#c9d8ae] shadow-[0_0_0_4px_rgba(201,216,174,0.16)]">
-                  <Navigation className="size-2 text-[#1a2412]" />
-                </span>
-              </div>
             </div>
           </section>
 
@@ -312,7 +171,9 @@ export function CampusMap({
             <div className="border-b border-[#8d9a75]/15 px-4 py-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="label-cinema text-[8px] text-[#b9c69d]/60">
-                  {selected?.provenance === "fictional" ? "Fictional caper area" : "Interpretive campus stop"}
+                  {selected?.provenance === "fictional"
+                    ? "Fictional caper area"
+                    : "Interpretive campus stop"}
                 </p>
                 <span
                   className={`inline-flex items-center gap-1 border px-2 py-0.5 font-ui text-[7px] uppercase tracking-[0.15em] ${
@@ -331,6 +192,12 @@ export function CampusMap({
               <p className="mt-2 font-ui text-[11px] leading-relaxed text-foreground/50">
                 {selected?.description}
               </p>
+              {selected && distance !== null && (
+                <p className="mt-3 flex items-center gap-1.5 border-t border-foreground/10 pt-2.5 font-ui text-[8px] uppercase tracking-[0.16em] text-[#c7d4b0]/60">
+                  <MapPin className="size-3" />
+                  {formatMapDistance(distance)} from your position
+                </p>
+              )}
             </div>
 
             <div className="flex-1 px-4 py-4">
@@ -361,31 +228,48 @@ export function CampusMap({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => selected && engine?.travelToCampusLocation(selected.id)}
-              disabled={!selected?.unlocked}
-              data-testid="map-travel"
-              className="m-4 inline-flex items-center justify-center gap-2 border border-[#a8b98a]/45 bg-[#1a2315] px-4 py-3 font-ui text-[9px] uppercase tracking-[0.22em] text-[#d6e2bf] transition hover:border-[#d6e2bf]/70 hover:bg-[#202b19] disabled:cursor-not-allowed disabled:border-foreground/10 disabled:bg-transparent disabled:text-foreground/25"
-            >
-              {selected?.unlocked ? (
-                <>
-                  {selected.discovered ? "Travel here" : "Travel & discover"}
-                  <ArrowRight className="size-3" />
-                </>
-              ) : (
-                <>
-                  <Lock className="size-3" /> Locked stop
-                </>
-              )}
-            </button>
+            <div className="m-4 mt-auto grid gap-2">
+              <button
+                type="button"
+                onClick={toggleWaypoint}
+                disabled={!selected}
+                data-testid="map-waypoint"
+                className={`inline-flex items-center justify-center gap-2 border px-4 py-2.5 font-ui text-[9px] uppercase tracking-[0.2em] transition disabled:cursor-not-allowed disabled:opacity-35 ${
+                  isWaypoint
+                    ? "border-[#e7c98f]/65 bg-[#2a2417] text-[#f0dcb7] hover:border-[#f0dcb7]/80"
+                    : "border-[#b9c69d]/25 text-[#c7d4b0]/70 hover:border-[#d6e2bf]/65 hover:text-[#e6edd7]"
+                }`}
+              >
+                <Flag className="size-3" />
+                {isWaypoint ? "Remove destination" : "Mark destination"}
+              </button>
+              <button
+                type="button"
+                onClick={travel}
+                disabled={!selected?.unlocked}
+                data-testid="map-travel"
+                className="inline-flex items-center justify-center gap-2 border border-[#a8b98a]/45 bg-[#1a2315] px-4 py-3 font-ui text-[9px] uppercase tracking-[0.22em] text-[#d6e2bf] transition hover:border-[#d6e2bf]/70 hover:bg-[#202b19] disabled:cursor-not-allowed disabled:border-foreground/10 disabled:bg-transparent disabled:text-foreground/25"
+              >
+                {selected?.unlocked ? (
+                  <>
+                    {selected.discovered ? "Travel here" : "Travel & discover"}
+                    <ArrowRight className="size-3" />
+                  </>
+                ) : (
+                  <>
+                    <Lock className="size-3" /> Locked stop
+                  </>
+                )}
+              </button>
+            </div>
           </aside>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#8d9a75]/15 pt-3">
           <p className="max-w-3xl font-ui text-[8px] leading-relaxed text-foreground/30">
-            {map.note} Route stops, map pins and travel are a game layer; physical free roam stays
-            open. House points are not awarded for exploring.
+            Live map uses the actual Three.js ground coordinates. Buildings are simplified plan
+            footprints, not a surveyed campus plan. Travel is optional; a destination marker stays
+            on the mini-map while you walk.
           </p>
           <div className="flex items-center gap-2">
             {state.profile && <HouseEmblem houseId={state.profile.houseId} size={22} />}

@@ -58,6 +58,16 @@ export interface MultiplayerRemotePlayer extends MultiplayerLocalState {
   lastSeen: number;
 }
 
+/** Presentation-only player marker for the live campus map. */
+export interface MapRemoteMarker {
+  memberId: string;
+  name: string;
+  houseId: string;
+  x: number;
+  z: number;
+  lastSeen: number;
+}
+
 /** The engine never talks to Convex directly; the React layer owns the network. */
 export interface MultiplayerAdapter {
   onLocalMove(state: MultiplayerLocalState): void;

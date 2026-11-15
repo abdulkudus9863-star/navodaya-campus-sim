@@ -28,6 +28,7 @@ import { GameEngine } from "../core/GameEngine";
 import { GameStore, useGameState } from "../core/GameStore";
 import { SaveSystem } from "../core/SaveSystem";
 import { DEFAULT_SETTINGS, type GameUIState } from "../core/types";
+import type { MapWaypoint } from "../data/liveMap";
 import { getHouse } from "../data/houses";
 import { AdventureMenu } from "./AdventureMenu";
 import { CampusEscape } from "./CampusEscape";
@@ -36,6 +37,7 @@ import { CampusPlan } from "./CampusPlan";
 import { CharacterCreation } from "./CharacterCreation";
 import { HouseEmblem } from "./HouseVisuals";
 import { InteractionMenu } from "./InteractionMenu";
+import { MiniMap } from "./MiniMap";
 import { MobileControls } from "./MobileControls";
 import { NightResultOverlay } from "./NightResult";
 import { ProfilePanel } from "./ProfilePanel";
@@ -81,6 +83,11 @@ export function GameShell({
   });
   const state = useGameState(store);
   const [engine, setEngine] = useState<GameEngine | null>(null);
+  const [mapWaypoint, setMapWaypoint] = useState<MapWaypoint | null>(null);
+
+  useEffect(() => {
+    if (state.screen === "menu") setMapWaypoint(null);
+  }, [state.screen]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -132,7 +139,13 @@ export function GameShell({
 
       {ready && state.screen === "playing" && !state.settingsOpen && (
         <>
-          <Hud state={state} engine={engine} multiplayer={multiplayer} />
+          <Hud
+            state={state}
+            engine={engine}
+            multiplayer={multiplayer}
+            waypoint={mapWaypoint}
+            onClearWaypoint={() => setMapWaypoint(null)}
+          />
           {state.isTouch && (
             <MobileControls
               engine={engine}
@@ -150,7 +163,13 @@ export function GameShell({
       {ready && state.planOpen && <CampusPlan state={state} engine={engine} />}
 
       {ready && state.campusMapOpen && state.campusMap && (
-        <CampusMap state={state} engine={engine} />
+        <CampusMap
+          state={state}
+          engine={engine}
+          waypoint={mapWaypoint}
+          onWaypointChange={setMapWaypoint}
+          multiplayer={multiplayer}
+        />
       )}
 
       {ready && state.dialogue && state.screen === "dialogue" && (
@@ -506,10 +525,14 @@ function Hud({
   state,
   engine,
   multiplayer = false,
+  waypoint,
+  onClearWaypoint,
 }: {
   state: GameUIState;
   engine: GameEngine | null;
   multiplayer?: boolean;
+  waypoint: MapWaypoint | null;
+  onClearWaypoint: () => void;
 }) {
   const mission = state.mission;
   const objectiveNumber = Math.min(mission.total, mission.step + 1);
@@ -529,7 +552,7 @@ function Hud({
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="absolute left-4 top-4 w-[calc(100%-5.5rem)] max-w-[15rem] border-l border-primary/50 pl-4 sm:left-6 sm:top-6 sm:max-w-[19rem]"
+        className="absolute left-4 top-4 w-[calc(100%-11rem)] max-w-[15rem] border-l border-primary/50 pl-4 sm:left-6 sm:top-6 sm:max-w-[19rem]"
       >
         <p className="label-cinema text-[9px] text-primary/75">
           {mission.done ? "Mission complete" : `Objective ${String(objectiveNumber).padStart(2, "0")} / ${String(mission.total).padStart(2, "0")}`}
@@ -564,14 +587,24 @@ function Hud({
       {night && <NightMissionHud night={night} />}
       {duty && <GardenDutyHud duty={duty} />}
 
-      <div className="absolute right-4 top-4 flex items-center gap-2 sm:right-6 sm:top-6 sm:gap-3">
+      <div className="absolute right-0 top-0 z-10 flex flex-col items-end gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:p-6">
+        {profile && (
+          <MiniMap
+            engine={engine}
+            state={state}
+            multiplayer={multiplayer}
+            waypoint={multiplayer ? null : waypoint}
+            onClearWaypoint={onClearWaypoint}
+          />
+        )}
+        <div className="flex items-center gap-2 sm:gap-3">
         {profile && !night && !multiplayer && (
           <button
             type="button"
             onClick={() => engine?.openCampusMap()}
             aria-label="Open campus map"
             data-testid="hud-map"
-            className="pointer-events-auto flex items-center gap-2 border border-foreground/15 bg-black/35 px-2 py-1.5 backdrop-blur-sm transition hover:border-[#b9c69d]/55 hover:text-[#dce7c6]"
+            className="pointer-events-auto hidden items-center gap-2 border border-foreground/15 bg-black/35 px-2 py-1.5 backdrop-blur-sm transition hover:border-[#b9c69d]/55 hover:text-[#dce7c6] sm:flex"
           >
             <MapIcon className="size-4 text-foreground/70" />
             <span className="hidden text-left sm:block">
@@ -621,6 +654,7 @@ function Hud({
             <Pause className="size-4" />
           </button>
         )}
+        </div>
       </div>
 
       {state.prompt && (
@@ -656,7 +690,7 @@ function GardenDutyHud({ duty }: { duty: NonNullable<GameUIState["gardenDuty"]> 
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
       data-testid="garden-duty-hud"
-      className="absolute left-4 top-4 w-[calc(100%-7.5rem)] max-w-[16rem] border-l border-[#9fc38d]/55 pl-4 sm:left-6 sm:top-6 sm:max-w-[20rem]"
+      className="absolute left-4 top-4 w-[calc(100%-11rem)] max-w-[16rem] border-l border-[#9fc38d]/55 pl-4 sm:left-6 sm:top-6 sm:max-w-[20rem]"
     >
       <p className="label-cinema text-[9px] text-[#cfe0bd]/80">
         Garden duty · {duty.complete ? "Complete" : "Mr. Barua"}
@@ -698,7 +732,7 @@ function NightMissionHud({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
       data-testid="night-hud"
-      className="absolute left-4 top-4 w-[calc(100%-7.5rem)] max-w-[16rem] border-l pl-4 sm:left-6 sm:top-6 sm:max-w-[20rem]"
+      className="absolute left-4 top-4 w-[calc(100%-11rem)] max-w-[16rem] border-l pl-4 sm:left-6 sm:top-6 sm:max-w-[20rem]"
       style={{ borderColor: "rgba(176,198,218,0.55)" }}
     >
       <p className="label-cinema text-[9px] text-[#b9cee2]/80">

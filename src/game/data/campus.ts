@@ -233,6 +233,8 @@ export interface CampusMapView {
     name: string;
     shortName: string;
     color: string;
+    x: number;
+    z: number;
     mapX: number;
     mapY: number;
     isPlayerHouse: boolean;
@@ -277,12 +279,14 @@ export function locationsForHouse(houseId: HouseId): CampusLocationDefinition[] 
 }
 
 export function houseMapMarkers(houseId: HouseId) {
-  return HOUSES.map((house, index) => ({
+  return HOUSES.map((house) => ({
     houseId: house.id,
     name: house.hostelName,
     shortName: house.shortName,
     color: house.color,
-    mapX: 38 + index * 8,
+    x: HOSTEL_X[house.id],
+    z: 38,
+    mapX: HOSTEL_MAP_X[house.id],
     mapY: 77,
     isPlayerHouse: house.id === houseId,
   }));
