@@ -337,6 +337,13 @@ export class GameEngine {
           houseId: engine.profile?.houseId ?? null,
           characterId: engine.profile?.characterId ?? null,
           xp: engine.profile?.xp ?? 0,
+          multiplayer: engine.multiplayer
+            ? {
+                collected: engine.multiplayer.collectedCount,
+                frozen: engine.multiplayer.frozen,
+                remotes: engine.multiplayer.layer.snapshot(),
+              }
+            : null,
           night: {
             mode: engine.nightMode,
             active: engine.night.active,

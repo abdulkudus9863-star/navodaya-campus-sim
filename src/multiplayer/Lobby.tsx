@@ -63,6 +63,13 @@ interface LobbyProps {
   chatError: string | null;
 }
 
+function relativeTime(timestamp: number): string {
+  const minutes = Math.floor((Date.now() - timestamp) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ago`;
+}
+
 const CONNECTION_LABEL: Record<ConnectionState, string> = {
   live: "Connected",
   reconnecting: "Reconnecting",
@@ -145,6 +152,12 @@ export function Lobby({
   chatError,
 }: LobbyProps) {
   const house = getHouse(identity.houseId);
+  const starting = Boolean(
+    room &&
+      room.status === "in_mission" &&
+      room.missionStartedAt !== null &&
+      Date.now() - room.missionStartedAt < 6_000,
+  );
   const [code, setCode] = useState(initialCode.toUpperCase());
   const [copied, setCopied] = useState<"code" | "link" | null>(null);
 
@@ -239,6 +252,7 @@ export function Lobby({
                   type="button"
                   disabled={busy}
                   onClick={onCreate}
+                  data-testid="create-room"
                   className="mt-4 inline-flex w-full items-center justify-center gap-2 border border-[#9fb9c9]/55 bg-[#9fb9c9]/10 px-4 py-3 font-ui text-[10px] uppercase tracking-[0.22em] text-[#dbe7f0] transition hover:border-[#b9cee2]/80 hover:bg-[#9fb9c9]/16 disabled:opacity-40"
                 >
                   {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Moon className="size-3.5" />}
@@ -267,6 +281,7 @@ export function Lobby({
                   <div className="mt-1.5 flex gap-2">
                     <input
                       id="room-code"
+                      data-testid="join-code"
                       value={code}
                       onChange={(event) =>
                         setCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))
@@ -279,6 +294,7 @@ export function Lobby({
                     <button
                       type="submit"
                       disabled={busy || code.length !== 6}
+                      data-testid="join-room"
                       className="shrink-0 border border-[#9fb9c9]/45 px-4 font-ui text-[9px] uppercase tracking-[0.18em] text-[#c7d8e4] transition hover:bg-[#9fb9c9]/12 disabled:opacity-35"
                     >
                       Join
@@ -368,16 +384,21 @@ export function Lobby({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="label-cinema text-[8px] text-[#9fb9c9]/55">
-                      {room.status === "waiting"
-                        ? "Waiting room"
-                        : room.status === "in_mission"
-                          ? "Mission in progress"
-                          : room.status === "completed"
-                            ? "Mission finished"
-                            : "Room closed"}
+                      {starting
+                        ? "Starting mission"
+                        : room.status === "waiting"
+                          ? "Waiting room"
+                          : room.status === "in_mission"
+                            ? "Mission in progress"
+                            : room.status === "completed"
+                              ? "Mission finished"
+                              : "Room closed"}
                     </p>
                     <div className="mt-2 flex items-center gap-3">
-                      <span className="font-display text-[30px] leading-none tracking-[0.3em] text-[#f4ead6]">
+                      <span
+                        data-testid="room-code"
+                        className="font-display text-[30px] leading-none tracking-[0.3em] text-[#f4ead6]"
+                      >
                         {room.code}
                       </span>
                       <button
@@ -391,6 +412,9 @@ export function Lobby({
                     </div>
                     <p className="mt-1 font-ui text-[9px] uppercase tracking-[0.16em] text-[#e9ddc8]/30">
                       {room.members.length}/{MP_MAX_PLAYERS} players · code works for this room only
+                    </p>
+                    <p className="mt-1 font-ui text-[8px] uppercase tracking-[0.14em] text-[#e9ddc8]/22">
+                      Opened {relativeTime(room.createdAt)} · active {relativeTime(room.lastActiveAt)}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -430,7 +454,7 @@ export function Lobby({
                     {room.members.filter((member) => member.online).length} online
                   </p>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2" data-testid="player-list">
                   {room.members.map((member) => (
                     <MemberRow key={member.memberId} member={member} room={room} />
                   ))}
@@ -467,6 +491,7 @@ export function Lobby({
                         type="button"
                         disabled={busy}
                         onClick={onStart}
+                        data-testid="start-mission"
                         className="inline-flex flex-1 items-center justify-center gap-2 border border-[#8fbf95]/50 bg-[#8fbf95]/10 px-4 py-3 font-ui text-[10px] uppercase tracking-[0.22em] text-[#c8e3ca] transition hover:border-[#a8d6ad]/80 hover:bg-[#8fbf95]/16 disabled:opacity-40"
                       >
                         {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Swords className="size-3.5" />}
@@ -484,6 +509,7 @@ export function Lobby({
                         type="button"
                         disabled={busy}
                         onClick={() => onReady(!room.self.ready)}
+                        data-testid="toggle-ready"
                         className={`inline-flex flex-1 items-center justify-center gap-2 border px-4 py-3 font-ui text-[10px] uppercase tracking-[0.22em] transition disabled:opacity-40 ${
                           room.self.ready
                             ? "border-[#8fbf95]/45 bg-[#8fbf95]/10 text-[#c8e3ca]"

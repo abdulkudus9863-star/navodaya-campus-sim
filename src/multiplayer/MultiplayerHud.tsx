@@ -70,10 +70,15 @@ export function MultiplayerHud({
     return messages.slice(lastRead).filter((message) => !message.isSelf).length;
   }, [chatOpen, lastRead, messages]);
 
+  // Only toggle gameplay input when the panel opens or closes — never on each
+  // incoming message, which would clear the player's held movement keys.
   useEffect(() => {
     onChatOpenChange(chatOpen);
+  }, [chatOpen, onChatOpenChange]);
+
+  useEffect(() => {
     if (chatOpen) setLastRead(messages.length);
-  }, [chatOpen, messages.length, onChatOpenChange]);
+  }, [chatOpen, messages.length]);
 
   const openChat = () => {
     setPlayersOpen(false);
@@ -82,7 +87,10 @@ export function MultiplayerHud({
 
   return (
     <>
-      <div className="pointer-events-none absolute inset-0 z-20 font-ui">
+      <div
+        data-testid="mp-hud"
+        className="pointer-events-none absolute inset-0 z-20 font-ui"
+      >
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -232,6 +240,14 @@ export function MultiplayerHud({
           <p className="mt-2 font-ui text-[8px] leading-relaxed text-[#e9ddc8]/25">
             Room {room.code} · personal contributions, shared objective.
           </p>
+          <button
+            type="button"
+            onClick={onLeave}
+            data-testid="leave-mission"
+            className="mt-2 inline-flex w-full items-center justify-center gap-1.5 border border-[#d98f7d]/30 px-3 py-2 font-ui text-[8px] uppercase tracking-[0.16em] text-[#e3b6a5] transition hover:border-[#d98f7d]/55 hover:bg-[#d98f7d]/8"
+          >
+            Leave mission
+          </button>
         </div>
       )}
 

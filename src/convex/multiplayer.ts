@@ -493,6 +493,10 @@ export const joinRoom = mutation({
     if (room.status === "closed") throw new Error("That room is closed.");
     if (room.status === "in_mission") throw new Error("That mission has already started.");
     if (room.status === "completed") throw new Error("That mission is already complete.");
+    if (Date.now() - room.lastActiveAt > ROOM_IDLE_MS) {
+      await ctx.db.patch(room._id, { status: "closed" });
+      throw new Error("That room expired. Ask the host for a new code.");
+    }
 
     const existing = await findMembership(ctx, room._id, userId);
     if (existing) {
@@ -665,7 +669,8 @@ export const syncPlayer = mutation({
       anim: args.anim,
       lastSeen: now,
     });
-    await ctx.db.patch(args.roomId, { lastActiveAt: now });
+    // Movement intentionally does not touch the room document: the 5s presence
+    // heartbeat owns lastActiveAt, avoiding a hot document at 8Hz × players.
     return { ok: true };
   },
 });

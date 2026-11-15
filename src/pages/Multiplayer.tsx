@@ -260,6 +260,7 @@ function MultiplayerExperience() {
   const handleLeave = async () => {
     engine?.setMultiplayerUiOpen(false);
     engine?.stopMultiplayerMission(false);
+    setEngine(null);
     const target = roomId;
     rememberRoom(null);
     setConnection("live");

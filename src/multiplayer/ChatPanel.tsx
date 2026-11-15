@@ -1,6 +1,7 @@
 import { Flag, Send, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { getHouse } from "@/game/data/houses";
+import { getHouse, type HouseId } from "@/game/data/houses";
+import { HouseEmblem } from "@/game/ui/HouseVisuals";
 import type { MultiplayerMessageView } from "./types";
 
 function formatTime(timestamp: number): string {
@@ -76,10 +77,11 @@ export function ChatPanel({
             const isMuted = muted.includes(message.name);
             return (
               <div key={message.messageId} className="group">
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className="size-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: house?.color ?? "#9fb9c9" }}
+                <div className="flex items-center gap-2">
+                  <HouseEmblem
+                    houseId={(house?.id ?? "aravali") as HouseId}
+                    size={15}
+                    className="shrink-0"
                   />
                   <span className="font-ui text-[10px] font-semibold tracking-wide text-[#f2e7d2]/85">
                     {message.isSelf ? "You" : message.name}
@@ -87,7 +89,7 @@ export function ChatPanel({
                   <span className="font-ui text-[8px] uppercase tracking-[0.14em] text-[#b9cee2]/30">
                     {house?.shortName ?? "Campus"} · {formatTime(message.createdAt)}
                   </span>
-                  <span className="ml-auto flex items-center gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+                  <span className="ml-auto flex items-center gap-1 opacity-60 transition group-hover:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
                       aria-label={`Mute ${message.name}`}
@@ -145,6 +147,7 @@ export function ChatPanel({
         </label>
         <textarea
           id="multiplayer-chat-input"
+          data-testid="chat-input"
           value={draft}
           onChange={(event) => setDraft(event.target.value.slice(0, 240))}
           onKeyDown={(event) => {

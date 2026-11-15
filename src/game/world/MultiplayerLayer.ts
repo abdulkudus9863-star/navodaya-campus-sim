@@ -4,6 +4,7 @@ import { shortestAngle } from "./geometry";
 import { getHouse } from "../data/houses";
 import {
   MP_HIDE_AFTER_MS,
+  MP_SAFE_ZONE,
   MP_VEGETABLES,
   type MultiplayerRemotePlayer,
 } from "../data/multiplayer";
@@ -41,10 +42,45 @@ export class MultiplayerLayer {
   private crates = new Map<string, CrateEntry>();
   private collected = new Set<string>();
   private clock = 0;
+  private safeRingMaterial: THREE.MeshBasicMaterial;
 
   constructor(scene: THREE.Scene) {
     this.group.name = "multiplayer-layer";
     scene.add(this.group);
+
+    // The marked extraction point at the garden gate.
+    this.safeRingMaterial = new THREE.MeshBasicMaterial({
+      color: "#8fbf95",
+      transparent: true,
+      opacity: 0.42,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const safeRing = new THREE.Mesh(
+      new THREE.RingGeometry(MP_SAFE_ZONE.radius - 0.2, MP_SAFE_ZONE.radius, 48),
+      this.safeRingMaterial,
+    );
+    safeRing.rotation.x = -Math.PI / 2;
+    safeRing.position.set(MP_SAFE_ZONE.x, 0.035, MP_SAFE_ZONE.z);
+    this.group.add(safeRing);
+
+    const safeDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(MP_SAFE_ZONE.radius - 0.2, 48),
+      new THREE.MeshBasicMaterial({
+        color: "#8fbf95",
+        transparent: true,
+        opacity: 0.07,
+        depthWrite: false,
+      }),
+    );
+    safeDisc.rotation.x = -Math.PI / 2;
+    safeDisc.position.set(MP_SAFE_ZONE.x, 0.03, MP_SAFE_ZONE.z);
+    this.group.add(safeDisc);
+
+    const safeLabel = makeNameLabel("Safe area · garden gate", "#8fbf95");
+    safeLabel.scale.set(2.4, 0.6, 1);
+    safeLabel.position.set(MP_SAFE_ZONE.x, 1.5, MP_SAFE_ZONE.z);
+    this.group.add(safeLabel);
 
     const wood = new THREE.MeshStandardMaterial({ color: "#6d5334", roughness: 0.86 });
     const slat = new THREE.MeshStandardMaterial({ color: "#94714a", roughness: 0.8 });
@@ -132,6 +168,17 @@ export class MultiplayerLayer {
     }
   }
 
+  /** Development-only snapshot used by the browser QA harness. */
+  snapshot(): Array<{ x: number; z: number; crouching: boolean; anim: string; visible: boolean }> {
+    return [...this.players.values()].map((entry) => ({
+      x: Number(entry.rig.group.position.x.toFixed(2)),
+      z: Number(entry.rig.group.position.z.toFixed(2)),
+      crouching: entry.crouching,
+      anim: entry.anim,
+      visible: entry.rig.group.visible,
+    }));
+  }
+
   /** Nearest uncollected crate within reach of the local player. */
   nearestCrate(x: number, z: number, radius = 2.3): CrateEntry | null {
     let best: CrateEntry | null = null;
@@ -150,6 +197,7 @@ export class MultiplayerLayer {
   update(dt: number): void {
     this.clock += dt;
     const now = Date.now();
+    this.safeRingMaterial.opacity = 0.28 + Math.sin(this.clock * 1.6) * 0.16;
 
     for (const crate of this.crates.values()) {
       crate.marker.position.y = crate.baseY + Math.sin(this.clock * 2.1 + crate.phase) * 0.06;
