@@ -44,7 +44,7 @@ export function InteractionMenu({
   };
 
   return (
-    <Popover open={open} onOpenChange={change} modal={false}>
+    <Popover open={open} onOpenChange={change} modal>
       <PopoverTrigger
         data-testid="interaction-prompt"
         aria-label={`Interaction available: ${prompt}. Open interaction menu.`}

@@ -89,6 +89,7 @@ export class InputController {
   }
 
   setJoystick(x: number, y: number): void {
+    if (!this.enabled) return;
     this.joystick.x = Math.max(-1, Math.min(1, x));
     this.joystick.y = Math.max(-1, Math.min(1, y));
     // y is expected in screen space (up = negative)
@@ -96,14 +97,17 @@ export class InputController {
   }
 
   queueJump(): void {
+    if (!this.enabled) return;
     this.jumpQueued = true;
   }
 
   queueInteract(): void {
+    if (!this.enabled) return;
     this.interactQueued = true;
   }
 
   addLook(dx: number, dy: number): void {
+    if (!this.enabled) return;
     this.lookX += dx;
     this.lookY += dy;
   }
