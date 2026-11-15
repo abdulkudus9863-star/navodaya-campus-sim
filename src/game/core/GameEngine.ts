@@ -26,6 +26,16 @@ import { ExplorationSystem } from "../systems/ExplorationSystem";
 import { NPCSystem } from "../systems/NPCSystem";
 import { PlayerController, collidesAt } from "../systems/PlayerController";
 import { WorldEnvironment, type WorldZone } from "../world/WorldEnvironment";
+import { MultiplayerLayer } from "../world/MultiplayerLayer";
+import {
+  MP_START_POINT,
+  MP_SYNC_INTERVAL,
+  MP_VEGETABLE_COUNT,
+  isInsideSafeZone,
+  type MultiplayerAdapter,
+  type MultiplayerLocalState,
+  type MultiplayerRemotePlayer,
+} from "../data/multiplayer";
 import { DEFAULT_HOUSE_ID, HOUSES, getHouse, type HouseId } from "../data/houses";
 import {
   STUDENT_ROSTER,
@@ -107,6 +117,18 @@ export class GameEngine {
   private crouching = false;
   private dialogueSource: "meera" | "night" | "caught" | null = null;
   private dialogueAnchor = new THREE.Vector3();
+
+  private multiplayer: {
+    adapter: MultiplayerAdapter;
+    layer: MultiplayerLayer;
+    syncTimer: number;
+    idleTimer: number;
+    lastSync: MultiplayerLocalState | null;
+    collectedCount: number;
+    extractionRequested: boolean;
+    collectCooldown: number;
+    frozen: boolean;
+  } | null = null;
 
   private clock = new THREE.Clock();
   private raf = 0;
@@ -604,6 +626,8 @@ export class GameEngine {
   }
 
   pause(): void {
+    // Multiplayer uses the room overlay, not the single-player pause menu.
+    if (this.multiplayer) return;
     const state = this.store.getState();
     if (state.screen !== "playing" || state.profileOpen) return;
     this.store.setScreen("paused");
@@ -667,6 +691,197 @@ export class GameEngine {
     if (choice === "stealth") return this.openAdventure();
     this.resume();
     return true;
+  }
+
+  /* ----------------------------------------------------------- multiplayer */
+
+  isMultiplayerActive(): boolean {
+    return this.multiplayer !== null;
+  }
+
+  /**
+   * Enters the shared night mission. All multiplayer network calls go through
+   * the adapter; the engine itself never trusts or invents mission state.
+   */
+  startMultiplayerMission(adapter: MultiplayerAdapter): boolean {
+    if (!this.profile) return false;
+    if (this.multiplayer) this.stopMultiplayerMission(false);
+
+    const layer = new MultiplayerLayer(this.scene);
+    this.multiplayer = {
+      adapter,
+      layer,
+      syncTimer: 0,
+      idleTimer: 0,
+      lastSync: null,
+      collectedCount: 0,
+      extractionRequested: false,
+      collectCooldown: 0,
+      frozen: false,
+    };
+
+    void this.audio.unlock();
+    this.nightMode = false;
+    this.nightCaughtHandled = false;
+    this.suspicion = 0;
+    this.cancelGardenDuty(false);
+    this.setCrouching(false);
+    this.world.setNight(true);
+    this.world.hideRoommate();
+    this.world.setGardenInteractablesActive(false);
+    this.world.setGardenPlotVerb(null);
+    this.world.hideMarker();
+    this.audio.setNight(true);
+    this.applyAtmosphere(true);
+
+    const start = new THREE.Vector3(MP_START_POINT.x, 0, MP_START_POINT.z);
+    this.player.placeAt(start, MP_START_POINT.rotationY);
+    this.cameraController.resetToPlayer(start, MP_START_POINT.rotationY);
+
+    this.store.patch({
+      screen: "playing",
+      settingsOpen: false,
+      profileOpen: false,
+      dialogue: null,
+      notice: null,
+      ending: null,
+      night: null,
+      nightResult: null,
+      gardenDuty: null,
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
+      crouching: false,
+      prompt: null,
+    });
+    this.input.reset();
+    this.input.setEnabled(true);
+    this.requestPointerLock();
+    this.showToast("Co-op mission live. Stay together, collect ten crates, then reach the garden gate.");
+    return true;
+  }
+
+  applyMultiplayerPlayers(players: readonly MultiplayerRemotePlayer[]): void {
+    this.multiplayer?.layer.setPlayers(players);
+  }
+
+  /** Stops WASD/joystick input while a chat sheet or panel owns the keyboard. */
+  setMultiplayerUiOpen(open: boolean): void {
+    if (!this.multiplayer) return;
+    if (open) {
+      this.input.setEnabled(false);
+      this.input.reset();
+      this.releasePointerLock();
+    } else if (this.store.getState().screen === "playing") {
+      this.input.reset();
+      this.input.setEnabled(true);
+    }
+  }
+
+  applyMultiplayerProgress(collectedIds: readonly string[], collectedCount: number): void {
+    const mp = this.multiplayer;
+    if (!mp) return;
+    mp.layer.setCollected(collectedIds);
+    const previous = mp.collectedCount;
+    mp.collectedCount = collectedCount;
+    if (previous < MP_VEGETABLE_COUNT && collectedCount >= MP_VEGETABLE_COUNT) {
+      this.audio.chime();
+      this.showToast("All ten crates collected. Get the team back to the garden gate.");
+    }
+  }
+
+  freezeMultiplayer(): void {
+    if (this.multiplayer) this.multiplayer.frozen = true;
+  }
+
+  stopMultiplayerMission(returnToTitle = true): void {
+    const mp = this.multiplayer;
+    if (!mp) return;
+    mp.layer.dispose();
+    this.multiplayer = null;
+
+    this.world.setNight(false);
+    this.world.setGardenInteractablesActive(false);
+    this.world.setGardenPlotVerb(null);
+    this.audio.setNight(false);
+    this.applyAtmosphere(false);
+    this.setCrouching(false);
+    this.suspicion = 0;
+    this.input.setEnabled(false);
+    this.input.reset();
+    this.releasePointerLock();
+    this.store.patch({
+      screen: "menu",
+      settingsOpen: false,
+      profileOpen: false,
+      dialogue: null,
+      notice: null,
+      ending: null,
+      night: null,
+      nightResult: null,
+      gardenDuty: null,
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
+      prompt: null,
+    });
+    this.player.resetToSpawn(this.world.spawn);
+    this.cameraController.resetToPlayer(this.world.spawn, Math.PI);
+    this.world.showMarker(null, true);
+    if (returnToTitle) this.audio.uiClick();
+  }
+
+  private updateMultiplayer(dt: number): void {
+    const mp = this.multiplayer;
+    if (!mp) return;
+    mp.layer.update(dt);
+    if (mp.collectCooldown > 0) mp.collectCooldown = Math.max(0, mp.collectCooldown - dt);
+    if (mp.frozen) return;
+
+    mp.syncTimer += dt;
+    if (mp.syncTimer >= MP_SYNC_INTERVAL) {
+      mp.syncTimer = 0;
+      const state: MultiplayerLocalState = {
+        x: Number(this.player.position.x.toFixed(2)),
+        y: Number(this.player.position.y.toFixed(2)),
+        z: Number(this.player.position.z.toFixed(2)),
+        rotationY: Number(this.player.rotationY.toFixed(3)),
+        moving: this.player.moving,
+        crouching: this.crouching,
+        anim: !this.player.grounded
+          ? "jump"
+          : this.crouching
+            ? "crouch"
+            : this.player.running
+              ? "run"
+              : this.player.moving
+                ? "walk"
+                : "idle",
+      };
+      const previous = mp.lastSync;
+      const changed =
+        !previous ||
+        Math.abs(previous.x - state.x) > 0.015 ||
+        Math.abs(previous.y - state.y) > 0.015 ||
+        Math.abs(previous.z - state.z) > 0.015 ||
+        Math.abs(previous.rotationY - state.rotationY) > 0.02 ||
+        previous.anim !== state.anim;
+      mp.idleTimer += MP_SYNC_INTERVAL;
+      if (changed || mp.idleTimer >= 1) {
+        mp.idleTimer = 0;
+        mp.lastSync = state;
+        mp.adapter.onLocalMove(state);
+      }
+    }
+
+    if (
+      mp.collectedCount >= MP_VEGETABLE_COUNT &&
+      !mp.extractionRequested &&
+      isInsideSafeZone(this.player.position.x, this.player.position.z)
+    ) {
+      mp.extractionRequested = true;
+      mp.adapter.onReturnToSafe(this.player.position.x, this.player.position.z);
+    }
   }
 
   /* --------------------------------------------------------- campus escape */
@@ -1032,7 +1247,7 @@ export class GameEngine {
   }
 
   private updateExploration(): void {
-    if (!this.profile || this.nightMode || this.gardenDuty) return;
+    if (!this.profile || this.nightMode || this.gardenDuty || this.multiplayer) return;
     const result = this.exploration.discoverNearby(
       this.player.position.x,
       this.player.position.z,
@@ -1146,9 +1361,16 @@ export class GameEngine {
       playtime: Math.round(this.playtime),
     });
     this.npc.end();
+    this.multiplayer?.layer.dispose();
+    this.multiplayer = null;
     this.cancelGardenDuty(false);
     this.setCrouching(false);
-    if (this.nightMode) {
+    if (this.world.night) {
+      this.world.setNight(false);
+      this.world.setGardenInteractablesActive(false);
+      this.audio.setNight(false);
+      this.applyAtmosphere(false);
+    } else if (this.nightMode) {
       this.nightMode = false;
       this.world.setNight(false);
       this.audio.setNight(false);
@@ -1166,6 +1388,8 @@ export class GameEngine {
   }
 
   saveGame(announce: boolean): boolean {
+    // Multiplayer never writes room state into the local single-player save.
+    if (this.multiplayer) return false;
     if (!this.mission.started || !this.profile) return false;
     const state = this.store.getState();
     const data: SaveData = {
@@ -1459,6 +1683,23 @@ export class GameEngine {
   interact(): void {
     const state = this.store.getState();
     if (state.screen !== "playing" || state.settingsOpen) return;
+    if (this.multiplayer) {
+      const crate = this.multiplayer.layer.nearestCrate(
+        this.player.position.x,
+        this.player.position.z,
+      );
+      if (crate) {
+        if (this.multiplayer.collectCooldown > 0) return;
+        this.multiplayer.collectCooldown = 0.45;
+        this.multiplayer.adapter.onCollect(
+          crate.id,
+          this.player.position.x,
+          this.player.position.z,
+        );
+        this.audio.uiClick();
+        return;
+      }
+    }
     const target = this.interaction.target;
     if (!target) return;
     if (target.kind === "npc") {
@@ -1616,6 +1857,8 @@ export class GameEngine {
     document.removeEventListener("visibilitychange", this.handleVisibility);
     this.input.detach();
     this.audio.dispose();
+    this.multiplayer?.layer.dispose();
+    this.multiplayer = null;
     this.player.dispose();
     this.world.dispose();
     this.removeDebugApi();
@@ -2037,18 +2280,29 @@ export class GameEngine {
       );
 
       const target = this.interaction.update(this.player.position);
-      this.store.setPrompt(target ? this.interaction.promptFor(target) : null);
-
-      if (this.mission.currentStepId === "classroom" && insideZone(this.world.zones.classroom, this.player.position)) {
-        this.completeStep("classroom");
-      } else if (
-        this.mission.currentStepId === "hostel" &&
-        this.profile &&
-        this.world.isInsideHouseHostel(this.profile.houseId, this.player.position)
-      ) {
-        this.completeStep("hostel");
+      const crate = this.multiplayer
+        ? this.multiplayer.layer.nearestCrate(this.player.position.x, this.player.position.z)
+        : null;
+      if (crate) {
+        this.store.setPrompt(`Collect ${crate.name}`);
+      } else {
+        this.store.setPrompt(target ? this.interaction.promptFor(target) : null);
       }
-      this.updateExploration();
+
+      if (this.multiplayer) {
+        this.updateMultiplayer(dt);
+      } else {
+        if (this.mission.currentStepId === "classroom" && insideZone(this.world.zones.classroom, this.player.position)) {
+          this.completeStep("classroom");
+        } else if (
+          this.mission.currentStepId === "hostel" &&
+          this.profile &&
+          this.world.isInsideHouseHostel(this.profile.houseId, this.player.position)
+        ) {
+          this.completeStep("hostel");
+        }
+        this.updateExploration();
+      }
 
       const seconds = Math.floor(this.playtime);
       if (seconds !== state.playtime) this.store.patch({ playtime: seconds });

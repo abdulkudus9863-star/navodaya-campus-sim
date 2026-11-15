@@ -23,7 +23,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { GameEngine } from "../core/GameEngine";
 import { GameStore, useGameState } from "../core/GameStore";
 import { SaveSystem } from "../core/SaveSystem";
@@ -52,8 +52,20 @@ function formatPlaytime(seconds: number): string {
   return `${minutes}m ${rest.toString().padStart(2, "0")}s`;
 }
 
-export function GameShell() {
+export function GameShell({
+  menu = true,
+  multiplayer = false,
+  children,
+  onEngineReady,
+}: {
+  menu?: boolean;
+  multiplayer?: boolean;
+  children?: ReactNode;
+  onEngineReady?: (engine: GameEngine) => void;
+} = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const onEngineReadyRef = useRef(onEngineReady);
+  onEngineReadyRef.current = onEngineReady;
   const [store] = useState(() => {
     const save = new SaveSystem().load();
     const touch = detectTouch();
@@ -74,7 +86,7 @@ export function GameShell() {
     if (!container) return;
     const instance = new GameEngine(container, store);
     setEngine(instance);
-    void instance.init();
+    void instance.init().then(() => onEngineReadyRef.current?.(instance));
     return () => {
       instance.dispose();
       setEngine((current) => (current === instance ? null : current));
@@ -113,13 +125,13 @@ export function GameShell() {
         <CharacterCreation engine={engine} />
       )}
 
-      {ready && state.screen === "menu" && !state.settingsOpen && (
+      {ready && menu && state.screen === "menu" && !state.settingsOpen && (
         <MainMenu state={state} engine={engine} />
       )}
 
       {ready && state.screen === "playing" && !state.settingsOpen && (
         <>
-          <Hud state={state} engine={engine} />
+          <Hud state={state} engine={engine} multiplayer={multiplayer} />
           {state.isTouch && (
             <MobileControls
               engine={engine}
@@ -130,7 +142,7 @@ export function GameShell() {
         </>
       )}
 
-      {ready && state.screen === "paused" && !state.settingsOpen && !state.planOpen && !state.campusMapOpen && (
+      {ready && !multiplayer && state.screen === "paused" && !state.settingsOpen && !state.planOpen && !state.campusMapOpen && (
         <PauseMenu state={state} engine={engine} />
       )}
 
@@ -175,6 +187,8 @@ export function GameShell() {
           onClose={() => engine?.closeSettings()}
         />
       )}
+
+      {children}
 
       <Toast message={state.toast} />
     </div>
@@ -487,7 +501,15 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
 
 /* --------------------------------------------------------------------- HUD */
 
-function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null }) {
+function Hud({
+  state,
+  engine,
+  multiplayer = false,
+}: {
+  state: GameUIState;
+  engine: GameEngine | null;
+  multiplayer?: boolean;
+}) {
   const mission = state.mission;
   const objectiveNumber = Math.min(mission.total, mission.step + 1);
   const night = state.night?.active ? state.night : null;
@@ -500,7 +522,7 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
       <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/55 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent" />
 
-      {!night && !duty && (
+      {!night && !duty && !multiplayer && (
       <motion.div
         key={mission.objective}
         initial={{ opacity: 0, y: -8 }}
@@ -542,7 +564,7 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
       {duty && <GardenDutyHud duty={duty} />}
 
       <div className="absolute right-4 top-4 flex items-center gap-2 sm:right-6 sm:top-6 sm:gap-3">
-        {profile && !night && (
+        {profile && !night && !multiplayer && (
           <button
             type="button"
             onClick={() => engine?.openCampusMap()}
@@ -561,7 +583,7 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
             </span>
           </button>
         )}
-        {profile && house && (
+        {profile && house && !multiplayer && (
           <button
             type="button"
             onClick={() => engine?.openProfile()}
@@ -588,14 +610,16 @@ function Hud({ state, engine }: { state: GameUIState; engine: GameEngine | null 
             {night ? "Operation Midnight Mischief" : "Navodaya campus"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => engine?.pause()}
-          aria-label="Pause game"
-          className="pointer-events-auto flex size-10 items-center justify-center rounded-full border border-foreground/20 bg-black/35 text-foreground/80 backdrop-blur-sm transition hover:border-primary/60 hover:text-primary"
-        >
-          <Pause className="size-4" />
-        </button>
+        {!multiplayer && (
+          <button
+            type="button"
+            onClick={() => engine?.pause()}
+            aria-label="Pause game"
+            className="pointer-events-auto flex size-10 items-center justify-center rounded-full border border-foreground/20 bg-black/35 text-foreground/80 backdrop-blur-sm transition hover:border-primary/60 hover:text-primary"
+          >
+            <Pause className="size-4" />
+          </button>
+        )}
       </div>
 
       {state.prompt && (

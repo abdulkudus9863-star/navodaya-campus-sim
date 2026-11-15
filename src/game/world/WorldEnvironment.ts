@@ -2071,7 +2071,7 @@ export class WorldEnvironment {
     }
   }
 
-  private hideRoommate(): void {
+  hideRoommate(): void {
     if (this.roommate) this.roommate.group.visible = false;
     if (this.roommateTag) this.roommateTag.visible = false;
     if (this.roommateInteractable) this.roommateInteractable.active = false;

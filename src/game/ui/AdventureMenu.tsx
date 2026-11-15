@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, ChevronRight, Flag, Moon, ShieldCheck, Trophy } from "lucide-react";
+import { ArrowLeft, ChevronRight, Flag, Moon, ShieldCheck, Trophy, Users } from "lucide-react";
+import { useNavigate } from "react-router";
 import type { GameEngine } from "../core/GameEngine";
 import type { GameUIState } from "../core/types";
 import { escapeLevelNumber, totalEscapeXp } from "../data/escape";
@@ -13,6 +14,7 @@ export function AdventureMenu({
   state: GameUIState;
   engine: GameEngine | null;
 }) {
+  const navigate = useNavigate();
   const profile = state.profile;
   const house = profile ? getHouse(profile.houseId) : null;
   const escape = state.escapeSave;
@@ -63,12 +65,7 @@ export function AdventureMenu({
         </header>
 
         <div className="mt-6 grid gap-3 md:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => engine?.startNight()}
-            data-testid="adventure-night"
-            className="group relative overflow-hidden border border-[#8fa4b4]/30 bg-[#10151a] p-5 text-left transition hover:border-[#b8cbd8]/65 hover:bg-[#151c22] sm:p-7"
-          >
+          <div className="group relative overflow-hidden border border-[#8fa4b4]/30 bg-[#10151a] p-5 text-left transition hover:border-[#b8cbd8]/65 hover:bg-[#151c22] sm:p-7">
             <span className="absolute right-5 top-5 font-ui text-[9px] uppercase tracking-[0.24em] text-[#9fb9c9]/45">
               Stealth
             </span>
@@ -85,14 +82,32 @@ export function AdventureMenu({
               Search the garden for four club markers, avoid torchlight and patrol cones, and sneak
               back to the hostel without being caught.
             </p>
-            <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-[#9fb9c9]/15 pt-3 font-ui text-[8px] uppercase tracking-[0.16em] text-[#b9cee2]/55">
+            <div className="mt-5 grid gap-2 border-t border-[#9fb9c9]/15 pt-4 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => engine?.startNight()}
+                data-testid="adventure-night"
+                className="inline-flex items-center justify-center gap-2 border border-[#9fb9c9]/55 bg-[#9fb9c9]/10 px-3 py-2.5 font-ui text-[9px] uppercase tracking-[0.18em] text-[#dbe7f0] transition hover:border-[#b9cee2]/80 hover:bg-[#9fb9c9]/16"
+              >
+                <Moon className="size-3" /> Single player
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/multiplayer")}
+                data-testid="adventure-multiplayer"
+                className="inline-flex items-center justify-center gap-2 border border-[#8fbf95]/45 bg-[#8fbf95]/10 px-3 py-2.5 font-ui text-[9px] uppercase tracking-[0.18em] text-[#c8e3ca] transition hover:border-[#a8d6ad]/80 hover:bg-[#8fbf95]/16"
+              >
+                <Users className="size-3" /> Multiplayer · 2–4
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3 font-ui text-[8px] uppercase tracking-[0.16em] text-[#b9cee2]/50">
               <span className="inline-flex items-center gap-1.5">
                 <ShieldCheck className="size-3" /> No house points
               </span>
               <span>{nightActive ? `Attempt ${state.night?.attempts ?? 1}` : nightDone ? "Replay available" : "Not yet completed"}</span>
-              <ChevronRight className="ml-auto size-4 transition group-hover:translate-x-1" />
+              <ChevronRight className="ml-auto size-4" />
             </div>
-          </button>
+          </div>
 
           <button
             type="button"

@@ -32,7 +32,96 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
-    // add other tables here
+    // ---------------------------------------------------------------- multiplayer
+
+    /** One live room per host. Codes are only readable through member-guarded queries. */
+    multiplayerRooms: defineTable({
+      code: v.string(),
+      hostId: v.id("users"),
+      status: v.union(
+        v.literal("waiting"),
+        v.literal("in_mission"),
+        v.literal("completed"),
+        v.literal("closed"),
+      ),
+      createdAt: v.number(),
+      lastActiveAt: v.number(),
+      missionStartedAt: v.optional(v.number()),
+      missionEndsAt: v.optional(v.number()),
+      completedAt: v.optional(v.number()),
+      missionSuccess: v.optional(v.boolean()),
+      collected: v.optional(
+        v.array(
+          v.object({
+            itemId: v.string(),
+            userId: v.string(),
+            name: v.string(),
+            at: v.number(),
+          }),
+        ),
+      ),
+    })
+      .index("by_code", ["code"])
+      .index("by_status", ["status"])
+      .index("by_host", ["hostId"]),
+
+    /** Membership doubles as ephemeral presence. Positions are overwritten, not logged. */
+    multiplayerMembers: defineTable({
+      roomId: v.id("multiplayerRooms"),
+      userId: v.id("users"),
+      name: v.string(),
+      houseId: v.string(),
+      characterId: v.string(),
+      ready: v.boolean(),
+      joinedAt: v.number(),
+      lastSeen: v.number(),
+      x: v.number(),
+      y: v.number(),
+      z: v.number(),
+      rotationY: v.number(),
+      moving: v.boolean(),
+      crouching: v.boolean(),
+      anim: v.union(
+        v.literal("idle"),
+        v.literal("walk"),
+        v.literal("run"),
+        v.literal("jump"),
+        v.literal("crouch"),
+      ),
+      contributions: v.number(),
+      rewardGranted: v.boolean(),
+    })
+      .index("by_room", ["roomId", "joinedAt"])
+      .index("by_room_user", ["roomId", "userId"])
+      .index("by_user", ["userId"]),
+
+    multiplayerMessages: defineTable({
+      roomId: v.id("multiplayerRooms"),
+      userId: v.id("users"),
+      name: v.string(),
+      houseId: v.string(),
+      text: v.string(),
+      createdAt: v.number(),
+    }).index("by_room_created", ["roomId", "createdAt"]),
+
+    multiplayerReports: defineTable({
+      roomId: v.id("multiplayerRooms"),
+      messageId: v.id("multiplayerMessages"),
+      reporterId: v.id("users"),
+      reason: v.string(),
+      createdAt: v.number(),
+    })
+      .index("by_room", ["roomId"])
+      .index("by_message_reporter", ["messageId", "reporterId"]),
+
+    /** Personal multiplayer rewards. Never touches house points or the local save. */
+    multiplayerProgress: defineTable({
+      userId: v.id("users"),
+      xp: v.number(),
+      vegetables: v.number(),
+      missions: v.number(),
+      updatedAt: v.number(),
+    }).index("by_user", ["userId"]),
 
     // tableName: defineTable({
     //   ...

@@ -71,8 +71,8 @@ const CAMPUS_SPACES = [
 
 const MINI_GAMES = [
   {
-    name: "Night Sneak",
-    description: "Cross the garden after lights-out, collect the markers and stay out of the watchman's torchlight.",
+    name: "Night Sneak · Co-op",
+    description: "Cross the garden after lights-out with 2–4 friends, share ten crates and stay out of the torchlight together.",
     available: true,
   },
   {
@@ -119,6 +119,13 @@ const FEATURES = [
     name: "Adventure missions",
     description:
       "Day-one orientation, Operation Midnight Mischief and the Campus Escape obstacle course.",
+    status: "Available now",
+    active: true,
+  },
+  {
+    name: "Real-time co-op",
+    description:
+      "Authenticated 2–4 player rooms with live characters, shared crates and room chat.",
     status: "Available now",
     active: true,
   },
@@ -529,10 +536,14 @@ function Landing() {
                     MIDNIGHT MISCHIEF
                   </h3>
                   <p className="mt-4 max-w-[420px] font-ui text-sm leading-6 text-[#d5d7cd]">
-                    Enter the fictional adventure zone and discover exciting challenges.
+                    Enter the fictional adventure zone solo, or open a real-time co-op room for
+                    two to four friends and share the same ten-crate objective.
                   </p>
-                  <div className="mt-7">
+                  <div className="mt-7 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                     <FocusLink href="/play">ENTER ADVENTURE</FocusLink>
+                    <FocusLink href="/multiplayer" variant="secondary">
+                      PLAY CO-OP · 2–4
+                    </FocusLink>
                   </div>
                 </div>
               </article>
@@ -663,8 +674,8 @@ function Landing() {
                 </h2>
               </div>
               <p className="max-w-[430px] font-ui text-sm leading-7 text-[#b9b3a4] lg:justify-self-end">
-                Green, blue, yellow and red. Four identities, one campus, and a year of house
-                competitions still being written.
+                Blue, green, red and yellow. Four house identities, one campus, and a year of
+                house competitions still being written.
               </p>
             </div>
 

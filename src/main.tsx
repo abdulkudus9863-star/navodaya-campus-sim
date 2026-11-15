@@ -12,6 +12,7 @@ import "./index.css";
 const Landing = lazy(() => import("./pages/Landing.tsx"));
 const Play = lazy(() => import("./pages/Play.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
+const Multiplayer = lazy(() => import("./pages/Multiplayer.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 // Cinematic loading fallback while the 3D bundle opens.
@@ -124,6 +125,7 @@ createRoot(document.getElementById("root")!).render(
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/play" element={<Play />} />
+              <Route path="/multiplayer" element={<Multiplayer />} />
               <Route path="/auth" element={<AuthPage redirectAfterAuth="/play" />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
