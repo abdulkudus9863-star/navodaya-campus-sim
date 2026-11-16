@@ -6,6 +6,7 @@ export class InputController {
   private keys = new Set<string>();
   private lookX = 0;
   private lookY = 0;
+  private zoomSteps = 0;
   private joystick = { x: 0, y: 0 };
   private jumpQueued = false;
   private interactQueued = false;
@@ -32,6 +33,7 @@ export class InputController {
     window.addEventListener("pointerup", this.handlePointerUp);
     window.addEventListener("pointermove", this.handlePointerMove);
     element.addEventListener("contextmenu", this.handleContextMenu);
+    element.addEventListener("wheel", this.handleWheel, { passive: false });
   }
 
   detach(): void {
@@ -39,6 +41,7 @@ export class InputController {
     if (element) {
       element.removeEventListener("pointerdown", this.handlePointerDown);
       element.removeEventListener("contextmenu", this.handleContextMenu);
+      element.removeEventListener("wheel", this.handleWheel);
     }
     window.removeEventListener("keydown", this.handleKeyDown);
     window.removeEventListener("keyup", this.handleKeyUp);
@@ -60,6 +63,7 @@ export class InputController {
       this.touchRunning = false;
       this.lookX = 0;
       this.lookY = 0;
+      this.zoomSteps = 0;
       if (document.pointerLockElement) document.exitPointerLock();
     }
   }
@@ -73,6 +77,7 @@ export class InputController {
     this.jumpQueued = false;
     this.interactQueued = false;
     this.touchRunning = false;
+    this.zoomSteps = 0;
   }
 
   setTouchRunning(running: boolean): void {
@@ -121,6 +126,17 @@ export class InputController {
     if (!this.enabled) return;
     this.lookX += dx;
     this.lookY += dy;
+  }
+
+  addZoom(steps: number): void {
+    if (!this.enabled || !Number.isFinite(steps)) return;
+    this.zoomSteps += Math.max(-2, Math.min(2, steps));
+  }
+
+  consumeZoom(): number {
+    const value = this.zoomSteps;
+    this.zoomSteps = 0;
+    return value;
   }
 
   consumeLook(): { x: number; y: number } {
@@ -185,6 +201,14 @@ export class InputController {
       if (!event.repeat) this.interactQueued = true;
       return;
     }
+    if (event.code === "Equal" || event.code === "NumpadAdd") {
+      if (!event.repeat) this.addZoom(-1);
+      return;
+    }
+    if (event.code === "Minus" || event.code === "NumpadSubtract") {
+      if (!event.repeat) this.addZoom(1);
+      return;
+    }
     this.keys.add(event.code);
   };
 
@@ -226,5 +250,11 @@ export class InputController {
 
   private handleContextMenu = (event: Event): void => {
     event.preventDefault();
+  };
+
+  private handleWheel = (event: WheelEvent): void => {
+    if (!this.enabled) return;
+    event.preventDefault();
+    this.addZoom(Math.sign(event.deltaY));
   };
 }

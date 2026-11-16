@@ -31,10 +31,29 @@ export interface GameSettings {
   sfx: boolean;
 }
 
+export type FaceShape = "oval" | "round" | "square";
+export type HairStyle = "short" | "side" | "curly" | "bun" | "braid";
+export type HairColor = "black" | "brown" | "soft";
+export type EyeColor = "brown" | "dark" | "hazel";
+export type BrowStyle = "straight" | "soft" | "bold";
+export type BodyBuild = "slim" | "regular" | "broad";
+export type GlassesStyle = "none" | "round" | "rect";
+export type WatchStyle = "none" | "steel" | "black";
+export type BackpackStyle = "none" | "navy" | "olive";
+
 export interface CharacterSettings {
   /** Retained for save compatibility. The vest colour is taken from the house. */
   uniform: "navy" | "olive" | "maroon";
   skin: 0 | 1 | 2 | 3;
+  face: FaceShape;
+  hairStyle: HairStyle;
+  hairColor: HairColor;
+  eyeColor: EyeColor;
+  brows: BrowStyle;
+  build: BodyBuild;
+  glasses: GlassesStyle;
+  watch: WatchStyle;
+  backpack: BackpackStyle;
 }
 
 export interface Vec3Save {
@@ -213,6 +232,7 @@ export interface GameUIState {
   exploration: ExplorationView | null;
   planOpen: boolean;
   campusMapOpen: boolean;
+  cameraOverview: boolean;
   campusMap: CampusMapView | null;
   crouching: boolean;
   hasSave: boolean;
@@ -268,6 +288,15 @@ export const DEFAULT_SETTINGS: GameSettings = {
 export const DEFAULT_CHARACTER: CharacterSettings = {
   uniform: "navy",
   skin: 1,
+  face: "oval",
+  hairStyle: "short",
+  hairColor: "black",
+  eyeColor: "brown",
+  brows: "straight",
+  build: "regular",
+  glasses: "none",
+  watch: "none",
+  backpack: "none",
 };
 
 export const PLAYER_CLASS = "VII";

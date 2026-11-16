@@ -13,11 +13,16 @@ const CINEMATIC_SHOTS: Array<{ position: THREE.Vector3; look: THREE.Vector3 }> =
 ];
 
 const CINEMATIC_DURATION = 56;
+const FOLLOW_MIN_DISTANCE = 2.5;
+const FOLLOW_MAX_DISTANCE = 9.5;
+const OVERVIEW_MIN_DISTANCE = 38;
+const OVERVIEW_MAX_DISTANCE = 118;
 
 export class CameraController {
   readonly camera: THREE.PerspectiveCamera;
   yaw = 0;
   pitch = 0.19;
+  /** User-selected follow distance. The rendered distance may be shorter when a wall is in the way. */
   distance = 4.9;
 
   private target = new THREE.Vector3();
@@ -26,12 +31,26 @@ export class CameraController {
   private smoothedPitch = 0.19;
   private currentDistance = 4.9;
   private dialogueAnchor: THREE.Vector3 | null = null;
-  mode: "follow" | "cinematic" | "dialogue" = "cinematic";
   private hasFollowed = false;
+  private manualLookCooldown = 0;
+
+  private overviewYaw = 0;
+  private overviewPitch = 0.62;
+  private overviewDistance = 78;
+  private overviewTargetDistance = 78;
+  private followYaw = 0;
+  private followPitch = 0.19;
+  private followDistance = 4.9;
+
+  mode: "follow" | "cinematic" | "dialogue" | "overview" = "cinematic";
 
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 400);
     this.camera.position.set(0, 3, 57);
+  }
+
+  get isOverview(): boolean {
+    return this.mode === "overview";
   }
 
   resize(aspect: number): void {
@@ -40,64 +59,143 @@ export class CameraController {
   }
 
   resetToPlayer(playerPosition: THREE.Vector3, playerRotationY: number): void {
-    // Camera sits behind the player's facing direction.
+    // Keep the player's chosen pitch and distance across doors, hostels and travel.
     this.yaw = playerRotationY + Math.PI;
-    this.pitch = 0.19;
-    this.currentDistance = this.distance;
     this.smoothedYaw = this.yaw;
     this.smoothedPitch = this.pitch;
+    this.currentDistance = this.distance;
+    this.manualLookCooldown = 0;
     this.hasFollowed = false;
     this.mode = "follow";
-    this.updateFollow(0.016, playerPosition, null, [], 1, false, true);
+    this.updateFollow(0.016, playerPosition, playerRotationY, null, [], 1, false, false, true);
+  }
+
+  /** Multiplicative distance change used by pinch, wheel and on-screen controls. */
+  zoomBy(factor: number): void {
+    const safe = Number.isFinite(factor) ? Math.max(0.5, Math.min(2, factor)) : 1;
+    if (this.mode === "overview") {
+      this.overviewTargetDistance = THREE.MathUtils.clamp(
+        this.overviewTargetDistance * safe,
+        OVERVIEW_MIN_DISTANCE,
+        OVERVIEW_MAX_DISTANCE,
+      );
+    } else {
+      this.distance = THREE.MathUtils.clamp(this.distance * safe, FOLLOW_MIN_DISTANCE, FOLLOW_MAX_DISTANCE);
+    }
+  }
+
+  /** Steps used by keyboard and on-screen +/- buttons. Positive steps zoom out. */
+  zoomStep(direction: number): void {
+    if (direction === 0) return;
+    this.zoomBy(direction > 0 ? 1.16 : 0.86);
+  }
+
+  getDistance(): number {
+    return this.mode === "overview" ? this.overviewTargetDistance : this.distance;
+  }
+
+  enterOverview(playerPosition: THREE.Vector3): void {
+    if (this.mode === "overview") return;
+    this.followYaw = this.yaw;
+    this.followPitch = this.pitch;
+    this.followDistance = this.distance;
+    this.overviewYaw = this.yaw;
+    this.overviewPitch = 0.62;
+    this.overviewDistance = Math.max(this.currentDistance, 28);
+    this.overviewTargetDistance = 78;
+    this.mode = "overview";
+    this.manualLookCooldown = 0;
+    this.target.copy(playerPosition);
+  }
+
+  exitOverview(): void {
+    if (this.mode !== "overview") return;
+    this.yaw = this.followYaw;
+    this.pitch = this.followPitch;
+    this.distance = this.followDistance;
+    this.manualLookCooldown = 0;
+    this.mode = "follow";
+    this.hasFollowed = true;
   }
 
   updateFollow(
     dt: number,
     playerPosition: THREE.Vector3,
+    playerRotationY: number,
     input: InputController | null,
     occluders: THREE.Box3[],
     sensitivity: number,
     invertY: boolean,
+    moving: boolean,
     snap = false,
   ): void {
     if (input) {
       const look = input.consumeLook();
-      this.yaw -= look.x * 0.0026 * sensitivity;
-      const pitchDelta = look.y * 0.0021 * sensitivity * (invertY ? -1 : 1);
-      this.pitch = THREE.MathUtils.clamp(this.pitch + pitchDelta, 0.02, 1.12);
+      if (Math.abs(look.x) > 0.0001 || Math.abs(look.y) > 0.0001) {
+        this.yaw -= look.x * 0.0026 * sensitivity;
+        const pitchDelta = look.y * 0.0021 * sensitivity * (invertY ? -1 : 1);
+        this.pitch = THREE.MathUtils.clamp(this.pitch + pitchDelta, 0.04, 1.05);
+        this.manualLookCooldown = 1.15;
+      } else if (this.manualLookCooldown > 0) {
+        this.manualLookCooldown = Math.max(0, this.manualLookCooldown - dt);
+      }
+      const zoom = input.consumeZoom();
+      if (zoom !== 0) {
+        this.distance = THREE.MathUtils.clamp(
+          this.distance + zoom * 0.7,
+          FOLLOW_MIN_DISTANCE,
+          FOLLOW_MAX_DISTANCE,
+        );
+      }
     }
 
-    this.smoothedYaw = snap ? this.yaw : this.smoothedYaw + shortest(this.smoothedYaw, this.yaw) * Math.min(1, dt * 18);
-    this.smoothedPitch = snap ? this.pitch : this.smoothedPitch + (this.pitch - this.smoothedPitch) * Math.min(1, dt * 18);
+    // GTA-style follow: once the player has stopped steering the camera and is
+    // moving, the orbit eases behind the character. A 180° turn therefore
+    // swings the camera around smoothly instead of leaving it in front.
+    if (moving && this.manualLookCooldown <= 0) {
+      const behind = playerRotationY + Math.PI;
+      this.yaw += shortest(this.yaw, behind) * Math.min(1, dt * 2.4);
+    }
+
+    this.smoothedYaw = snap
+      ? this.yaw
+      : this.smoothedYaw + shortest(this.smoothedYaw, this.yaw) * Math.min(1, dt * 16);
+    this.smoothedPitch = snap
+      ? this.pitch
+      : this.smoothedPitch + (this.pitch - this.smoothedPitch) * Math.min(1, dt * 16);
 
     const targetY = playerPosition.y + 1.48;
     const target = new THREE.Vector3(playerPosition.x, targetY, playerPosition.z);
     const cosPitch = Math.cos(this.smoothedPitch);
-    const offset = new THREE.Vector3(
+    const direction = new THREE.Vector3(
       Math.sin(this.smoothedYaw) * cosPitch,
       Math.sin(this.smoothedPitch),
       Math.cos(this.smoothedYaw) * cosPitch,
-    ).multiplyScalar(this.distance);
+    ).normalize();
 
-    let allowed = this.distance;
-    const direction = offset.clone().normalize();
+    const requested = THREE.MathUtils.clamp(this.distance, FOLLOW_MIN_DISTANCE, FOLLOW_MAX_DISTANCE);
+    let collisionDistance = requested;
     const ray = new THREE.Ray(target, direction);
     const hitPoint = new THREE.Vector3();
     for (const box of occluders) {
       const hit = ray.intersectBox(box, hitPoint);
       if (hit) {
         const distanceToHit = target.distanceTo(hit);
-        if (distanceToHit < allowed) allowed = distanceToHit;
+        if (distanceToHit < collisionDistance) collisionDistance = distanceToHit;
       }
     }
-    allowed = Math.max(1.15, allowed - 0.22);
+    collisionDistance = Math.max(1.05, collisionDistance - 0.22);
+    const obstructed = collisionDistance < requested - 0.03;
 
-    const desiredDistance = allowed;
-    this.currentDistance = snap
-      ? desiredDistance
-      : this.currentDistance + (desiredDistance - this.currentDistance) * Math.min(1, dt * 14);
-
-    const desired = target.clone().add(direction.multiplyScalar(this.currentDistance));
+    // Pull in immediately when a wall is hit, but ease back out when the view
+    // clears. This avoids both wall clipping and a jarring zoom-out.
+    if (snap || collisionDistance < this.currentDistance) {
+      this.currentDistance = collisionDistance;
+    } else {
+      this.currentDistance += (requested - this.currentDistance) * Math.min(1, dt * 7);
+    }
+    const renderedDistance = Math.min(this.currentDistance, collisionDistance);
+    const desired = target.clone().add(direction.multiplyScalar(renderedDistance));
     desired.y = Math.max(0.4, desired.y);
 
     if (snap || !this.hasFollowed) {
@@ -105,9 +203,51 @@ export class CameraController {
       this.currentLook.copy(target);
       this.hasFollowed = true;
     } else {
-      this.camera.position.lerp(desired, Math.min(1, dt * 18));
-      this.currentLook.lerp(target, Math.min(1, dt * 14));
+      this.camera.position.lerp(desired, Math.min(1, dt * (obstructed ? 30 : 18)));
+      this.currentLook.lerp(target, Math.min(1, dt * 15));
     }
+    this.camera.lookAt(this.currentLook);
+    this.dialogueAnchor = null;
+  }
+
+  updateOverview(
+    dt: number,
+    input: InputController | null,
+    sensitivity: number,
+    invertY: boolean,
+  ): void {
+    if (input) {
+      const look = input.consumeLook();
+      this.overviewYaw -= look.x * 0.0026 * sensitivity;
+      const pitchDelta = look.y * 0.0021 * sensitivity * (invertY ? -1 : 1);
+      this.overviewPitch = THREE.MathUtils.clamp(this.overviewPitch + pitchDelta, 0.28, 1.15);
+      const zoom = input.consumeZoom();
+      if (zoom !== 0) {
+        this.overviewTargetDistance = THREE.MathUtils.clamp(
+          this.overviewTargetDistance + zoom * 4.5,
+          OVERVIEW_MIN_DISTANCE,
+          OVERVIEW_MAX_DISTANCE,
+        );
+      }
+    }
+
+    this.smoothedYaw += shortest(this.smoothedYaw, this.overviewYaw) * Math.min(1, dt * 10);
+    this.smoothedPitch += (this.overviewPitch - this.smoothedPitch) * Math.min(1, dt * 10);
+    this.overviewDistance +=
+      (this.overviewTargetDistance - this.overviewDistance) * Math.min(1, dt * 6);
+
+    const focus = new THREE.Vector3(0, 2.2, 0);
+    const cosPitch = Math.cos(this.smoothedPitch);
+    const offset = new THREE.Vector3(
+      Math.sin(this.smoothedYaw) * cosPitch,
+      Math.sin(this.smoothedPitch),
+      Math.cos(this.smoothedYaw) * cosPitch,
+    ).multiplyScalar(this.overviewDistance);
+    const desired = focus.clone().add(offset);
+    desired.y = Math.max(8, desired.y);
+
+    this.camera.position.lerp(desired, Math.min(1, dt * 3.2));
+    this.currentLook.lerp(focus, Math.min(1, dt * 3.2));
     this.camera.lookAt(this.currentLook);
     this.dialogueAnchor = null;
   }

@@ -22,6 +22,8 @@ import {
   Smartphone,
   UserRound,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { GameEngine } from "../core/GameEngine";
@@ -137,7 +139,7 @@ export function GameShell({
         <MainMenu state={state} engine={engine} />
       )}
 
-      {ready && state.screen === "playing" && !state.settingsOpen && (
+      {ready && state.screen === "playing" && !state.settingsOpen && !state.cameraOverview && (
         <>
           <Hud
             state={state}
@@ -155,6 +157,10 @@ export function GameShell({
           )}
           {state.isTouch && <OrientationHint />}
         </>
+      )}
+
+      {ready && state.screen === "playing" && !state.settingsOpen && state.cameraOverview && (
+        <CameraOverviewOverlay engine={engine} />
       )}
 
       {ready && !multiplayer && state.screen === "paused" && !state.settingsOpen && !state.planOpen && !state.campusMapOpen && (
@@ -566,6 +572,59 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
 
 /* --------------------------------------------------------------------- HUD */
 
+function CameraOverviewOverlay({ engine }: { engine: GameEngine | null }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="pointer-events-none absolute inset-0 z-30 font-ui"
+      data-testid="camera-overview"
+    >
+      <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/70 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-black/75 to-transparent" />
+
+      <div className="absolute left-1/2 top-[max(1rem,env(safe-area-inset-top))] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 text-center">
+        <p className="label-cinema text-primary/85">Campus overview</p>
+        <p className="mt-1 font-display text-xl text-[#f4ead6] sm:text-2xl">Navodaya from above</p>
+        <p className="mt-1 font-ui text-[9px] uppercase tracking-[0.16em] text-foreground/45">
+          Drag to orbit · pinch or scroll to zoom
+        </p>
+      </div>
+
+      <div className="pointer-events-auto absolute right-[max(1rem,env(safe-area-inset-right))] top-1/2 flex -translate-y-1/2 flex-col gap-2">
+        <button
+          type="button"
+          onClick={() => engine?.zoomCamera(0.84)}
+          aria-label="Zoom in on campus"
+          className="flex size-11 items-center justify-center rounded-full border border-foreground/25 bg-black/55 text-foreground/85 backdrop-blur-sm transition hover:border-primary/70 hover:text-primary"
+        >
+          <ZoomIn className="size-5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => engine?.zoomCamera(1.19)}
+          aria-label="Zoom out on campus"
+          className="flex size-11 items-center justify-center rounded-full border border-foreground/25 bg-black/55 text-foreground/85 backdrop-blur-sm transition hover:border-primary/70 hover:text-primary"
+        >
+          <ZoomOut className="size-5" />
+        </button>
+      </div>
+
+      <div className="absolute inset-x-0 bottom-[max(1.5rem,env(safe-area-inset-bottom))] flex justify-center">
+        <button
+          type="button"
+          onClick={() => engine?.exitCameraOverview()}
+          aria-label="Return to player"
+          data-testid="return-to-player"
+          className="pointer-events-auto inline-flex items-center gap-2.5 border border-primary/70 bg-[#10150e]/90 px-5 py-3 font-ui text-[10px] uppercase tracking-[0.22em] text-primary shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-sm transition hover:bg-primary/15"
+        >
+          <UserRound className="size-4" /> Return to player
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
 function Hud({
   state,
   engine,
@@ -689,6 +748,20 @@ function Hud({
             {night ? "Operation Midnight Mischief" : "Navodaya campus"}
           </p>
         </div>
+        {!multiplayer && !night && (
+          <button
+            type="button"
+            onClick={() => engine?.enterCameraOverview()}
+            aria-label="Campus overview"
+            data-testid="camera-overview-button"
+            className="pointer-events-auto flex h-10 items-center gap-2 rounded-full border border-foreground/20 bg-black/35 px-3 text-foreground/80 backdrop-blur-sm transition hover:border-primary/60 hover:text-primary"
+          >
+            <Eye className="size-4" />
+            <span className="hidden font-ui text-[8px] uppercase tracking-[0.18em] lg:block">
+              Overview
+            </span>
+          </button>
+        )}
         {!multiplayer && (
           <button
             type="button"

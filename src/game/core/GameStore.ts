@@ -43,6 +43,7 @@ export class GameStore {
       exploration: null,
       planOpen: false,
       campusMapOpen: false,
+      cameraOverview: false,
       campusMap: null,
       profileOpen: false,
       crouching: false,

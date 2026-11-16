@@ -17,6 +17,7 @@ export function MobileControls({
   const [stick, setStick] = useState({ x: 0, y: 0, active: false });
   const [runHeld, setRunHeld] = useState(false);
   const lookPointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchDistance = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
@@ -67,22 +68,46 @@ export function MobileControls({
     engine?.setJoystick(0, 0);
   };
 
+  const pointerSpan = () => {
+    const points = Array.from(lookPointers.current.values());
+    if (points.length < 2) return null;
+    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+  };
+
   const handleLookDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
     lookPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    // A second finger changes the gesture from orbit to pinch-zoom.
+    if (event.pointerType === "touch" && lookPointers.current.size >= 2) {
+      pinchDistance.current = pointerSpan();
+    }
   };
 
   const handleLookMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const previous = lookPointers.current.get(event.pointerId);
     if (!previous) return;
+    lookPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (event.pointerType === "touch" && lookPointers.current.size >= 2) {
+      const span = pointerSpan();
+      if (span && pinchDistance.current) {
+        const factor = span / pinchDistance.current;
+        if (Number.isFinite(factor) && Math.abs(factor - 1) > 0.002) {
+          engine?.zoomCamera(factor);
+        }
+      }
+      pinchDistance.current = span;
+      return;
+    }
+
     const dx = event.clientX - previous.x;
     const dy = event.clientY - previous.y;
-    lookPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     engine?.addLook(dx * 1.9, dy * 1.9);
   };
 
   const handleLookEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
     lookPointers.current.delete(event.pointerId);
+    if (lookPointers.current.size < 2) pinchDistance.current = null;
   };
 
   const thumbOffset = 34;

@@ -321,7 +321,12 @@ export class GameEngine {
           done: engine.mission.done,
           prompt: state.prompt,
           position: { x: engine.player.position.x, z: engine.player.position.z },
-          camera: { yaw: engine.cameraController.yaw, pitch: engine.cameraController.pitch },
+          camera: {
+            yaw: engine.cameraController.yaw,
+            pitch: engine.cameraController.pitch,
+            distance: engine.cameraController.distance,
+            overview: engine.cameraController.isOverview,
+          },
           ending: Boolean(state.ending),
           profileOpen: state.profileOpen,
           planOpen: state.planOpen,
@@ -531,6 +536,7 @@ export class GameEngine {
       planOpen: false,
       campusMapOpen: false,
       campusMap: null,
+      cameraOverview: false,
       escapeSave: this.escapeData,
     });
     this.enterPlaying(true);
@@ -638,6 +644,10 @@ export class GameEngine {
     if (this.multiplayer) return;
     const state = this.store.getState();
     if (state.screen !== "playing" || state.profileOpen) return;
+    if (state.cameraOverview) {
+      this.cameraController.exitOverview();
+      this.store.patch({ cameraOverview: false });
+    }
     this.store.setScreen("paused");
     this.store.setPrompt(null);
     this.input.setEnabled(false);
@@ -654,6 +664,7 @@ export class GameEngine {
       planOpen: false,
       campusMapOpen: false,
       campusMap: null,
+      cameraOverview: false,
     });
     this.input.reset();
     this.input.setEnabled(true);
@@ -1540,6 +1551,38 @@ export class GameEngine {
     this.audio.uiClick();
   }
 
+  getCharacter(): CharacterSettings {
+    return this.store.getState().character;
+  }
+
+  zoomCamera(factor: number): void {
+    this.cameraController.zoomBy(factor);
+    this.audio.uiClick();
+  }
+
+  enterCameraOverview(): boolean {
+    const state = this.store.getState();
+    if (state.screen !== "playing" || state.settingsOpen || state.profileOpen) return false;
+    if (this.multiplayer || this.nightMode) {
+      this.showToast("Campus overview is available in the single-player daytime campus.");
+      return false;
+    }
+    this.cameraController.enterOverview(this.player.position);
+    this.input.reset();
+    this.store.patch({ cameraOverview: true });
+    this.store.setPrompt(null);
+    this.audio.uiClick();
+    return true;
+  }
+
+  exitCameraOverview(): void {
+    if (!this.store.getState().cameraOverview) return;
+    this.cameraController.exitOverview();
+    this.input.reset();
+    this.store.patch({ cameraOverview: false });
+    this.audio.uiClick();
+  }
+
   startNight(): boolean {
     if (!this.profile) return false;
     if (this.night.active) return false;
@@ -2266,6 +2309,10 @@ export class GameEngine {
       return;
     }
     if (event.code === "Escape") {
+      if (state.cameraOverview) {
+        this.exitCameraOverview();
+        return;
+      }
       if (state.planOpen) {
         this.choosePlan("later");
         return;
@@ -2299,6 +2346,12 @@ export class GameEngine {
       this.toggleCrouch();
       return;
     }
+    if (state.screen === "playing" && event.code === "KeyO" && !event.repeat) {
+      event.preventDefault();
+      if (state.cameraOverview) this.exitCameraOverview();
+      else this.enterCameraOverview();
+      return;
+    }
     if (state.screen === "dialogue") {
       if (event.code === "Space" || event.code === "Enter" || event.code === "KeyE") {
         if (state.dialogue && !state.dialogue.canAdvance) return;
@@ -2330,11 +2383,23 @@ export class GameEngine {
     this.elapsed += dt;
 
     const state = this.store.getState();
-    const simulating = state.screen === "playing" && !state.settingsOpen && !state.profileOpen;
+    const simulating =
+      state.screen === "playing" &&
+      !state.settingsOpen &&
+      !state.profileOpen &&
+      !state.cameraOverview;
 
     this.audio.update(dt);
 
-    if (simulating) {
+    if (state.cameraOverview) {
+      this.cameraController.updateOverview(
+        dt,
+        this.input,
+        state.settings.sensitivity,
+        state.settings.invertY,
+      );
+      this.store.setPrompt(null);
+    } else if (simulating) {
       this.playtime += dt;
       if (this.input.consumeInteract()) this.interact();
       this.player.update(
@@ -2348,10 +2413,12 @@ export class GameEngine {
       this.cameraController.updateFollow(
         dt,
         this.player.position,
+        this.player.rotationY,
         this.input,
         this.world.occluders,
         state.settings.sensitivity,
         state.settings.invertY,
+        this.player.moving,
       );
 
       const target = this.interaction.update(this.player.position);

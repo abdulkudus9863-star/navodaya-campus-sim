@@ -49,6 +49,20 @@ export function sanitizeSettings(raw: unknown): GameSettings {
   };
 }
 
+const FACES: CharacterSettings["face"][] = ["oval", "round", "square"];
+const HAIR_STYLES: CharacterSettings["hairStyle"][] = ["short", "side", "curly", "bun", "braid"];
+const HAIR_COLORS: CharacterSettings["hairColor"][] = ["black", "brown", "soft"];
+const EYE_COLORS: CharacterSettings["eyeColor"][] = ["brown", "dark", "hazel"];
+const BROWS: CharacterSettings["brows"][] = ["straight", "soft", "bold"];
+const BUILDS: CharacterSettings["build"][] = ["slim", "regular", "broad"];
+const GLASSES: CharacterSettings["glasses"][] = ["none", "round", "rect"];
+const WATCHES: CharacterSettings["watch"][] = ["none", "steel", "black"];
+const BACKPACKS: CharacterSettings["backpack"][] = ["none", "navy", "olive"];
+
+function option<T extends string>(values: readonly T[], raw: unknown, fallback: T): T {
+  return values.includes(raw as T) ? (raw as T) : fallback;
+}
+
 export function sanitizeCharacter(raw: unknown): CharacterSettings {
   const source = (raw ?? {}) as Partial<CharacterSettings>;
   return {
@@ -58,6 +72,15 @@ export function sanitizeCharacter(raw: unknown): CharacterSettings {
     skin: ([0, 1, 2, 3] as const).includes(source.skin as 0)
       ? (source.skin as 0 | 1 | 2 | 3)
       : DEFAULT_CHARACTER.skin,
+    face: option(FACES, source.face, DEFAULT_CHARACTER.face),
+    hairStyle: option(HAIR_STYLES, source.hairStyle, DEFAULT_CHARACTER.hairStyle),
+    hairColor: option(HAIR_COLORS, source.hairColor, DEFAULT_CHARACTER.hairColor),
+    eyeColor: option(EYE_COLORS, source.eyeColor, DEFAULT_CHARACTER.eyeColor),
+    brows: option(BROWS, source.brows, DEFAULT_CHARACTER.brows),
+    build: option(BUILDS, source.build, DEFAULT_CHARACTER.build),
+    glasses: option(GLASSES, source.glasses, DEFAULT_CHARACTER.glasses),
+    watch: option(WATCHES, source.watch, DEFAULT_CHARACTER.watch),
+    backpack: option(BACKPACKS, source.backpack, DEFAULT_CHARACTER.backpack),
   };
 }
 
