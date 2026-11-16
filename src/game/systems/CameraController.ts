@@ -33,6 +33,8 @@ export class CameraController {
   private dialogueAnchor: THREE.Vector3 | null = null;
   private hasFollowed = false;
   private manualLookCooldown = 0;
+  private followSettle = 0;
+  private wasMoving = false;
 
   private overviewYaw = 0;
   private overviewPitch = 0.62;
@@ -65,6 +67,8 @@ export class CameraController {
     this.smoothedPitch = this.pitch;
     this.currentDistance = this.distance;
     this.manualLookCooldown = 0;
+    this.followSettle = 0;
+    this.wasMoving = false;
     this.hasFollowed = false;
     this.mode = "follow";
     this.updateFollow(0.016, playerPosition, playerRotationY, null, [], 1, false, false, true);
@@ -94,6 +98,17 @@ export class CameraController {
     return this.mode === "overview" ? this.overviewTargetDistance : this.distance;
   }
 
+  /** Orientation currently being rendered, including overview orbit. */
+  getViewYaw(): number {
+    return this.mode === "overview" ? this.overviewYaw : this.yaw;
+  }
+
+  /** Actual camera separation from the player focus, after collision/zoom smoothing. */
+  getRenderedDistance(playerPosition: THREE.Vector3): number {
+    const focus = new THREE.Vector3(playerPosition.x, playerPosition.y + 1.48, playerPosition.z);
+    return this.camera.position.distanceTo(focus);
+  }
+
   enterOverview(playerPosition: THREE.Vector3): void {
     if (this.mode === "overview") return;
     this.followYaw = this.yaw;
@@ -105,6 +120,7 @@ export class CameraController {
     this.overviewTargetDistance = 78;
     this.mode = "overview";
     this.manualLookCooldown = 0;
+    this.followSettle = 0;
     this.target.copy(playerPosition);
   }
 
@@ -114,6 +130,7 @@ export class CameraController {
     this.pitch = this.followPitch;
     this.distance = this.followDistance;
     this.manualLookCooldown = 0;
+    this.followSettle = 0;
     this.mode = "follow";
     this.hasFollowed = true;
   }
@@ -149,13 +166,28 @@ export class CameraController {
       }
     }
 
-    // GTA-style follow: once the player has stopped steering the camera and is
-    // moving, the orbit eases behind the character. A 180° turn therefore
-    // swings the camera around smoothly instead of leaving it in front.
-    if (moving && this.manualLookCooldown <= 0) {
-      const behind = playerRotationY + Math.PI;
-      this.yaw += shortest(this.yaw, behind) * Math.min(1, dt * 2.4);
+    // Auto-follow only for forward/diagonal travel. Pure strafing and
+    // backpedalling must not spin the camera (or the character) in a circle.
+    // When travel stops, a short settle window eases the orbit behind the
+    // character, so a 180° backpedal swings the camera around after release
+    // instead of leaving it in front of the student.
+    const move = input?.getMove();
+    const forwardIntent = move ? move.y : 0;
+    const behind = playerRotationY + Math.PI;
+    const behindError = Math.abs(shortest(this.yaw, behind));
+    if (!moving && this.wasMoving && this.manualLookCooldown <= 0 && behindError > 0.32) {
+      this.followSettle = 1.5;
     }
+    const aligningForward = moving && this.manualLookCooldown <= 0 && forwardIntent > 0.3;
+    if (aligningForward) this.followSettle = 1.2;
+    if (this.manualLookCooldown <= 0 && (aligningForward || (!moving && this.followSettle > 0))) {
+      const rate = moving ? 3.2 : 5.5;
+      this.yaw += shortest(this.yaw, behind) * Math.min(1, dt * rate);
+      if (!moving) this.followSettle = Math.max(0, this.followSettle - dt);
+    } else if (this.followSettle > 0) {
+      this.followSettle = Math.max(0, this.followSettle - dt);
+    }
+    this.wasMoving = moving;
 
     this.smoothedYaw = snap
       ? this.yaw

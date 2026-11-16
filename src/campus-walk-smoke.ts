@@ -162,7 +162,8 @@ check(!collidesAt(-16, 0, world.colliders, 0), "open academic door clears the en
 // cases that a grid audit can miss, such as floor snapping or rail clipping.
 const THREE = await import("three");
 const { PlayerController } = await import("./game/systems/PlayerController");
-const player = new PlayerController({ uniform: "navy", skin: 0 }, "#2563EB");
+const { DEFAULT_CHARACTER } = await import("./game/core/types");
+const player = new PlayerController(DEFAULT_CHARACTER, "#2563EB");
 player.placeAt(new THREE.Vector3(-36.2, 0, 3.2), 0);
 const fakeInput: any = {
   running: false,

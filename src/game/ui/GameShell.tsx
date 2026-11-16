@@ -573,6 +573,15 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
 /* --------------------------------------------------------------------- HUD */
 
 function CameraOverviewOverlay({ engine }: { engine: GameEngine | null }) {
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const drag = useRef<{ id: number; x: number; y: number } | null>(null);
+  const pinch = useRef<number | null>(null);
+  const span = () => {
+    const points = Array.from(pointers.current.values());
+    if (points.length < 2) return null;
+    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -583,7 +592,49 @@ function CameraOverviewOverlay({ engine }: { engine: GameEngine | null }) {
       <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/70 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-black/75 to-transparent" />
 
-      <div className="absolute left-1/2 top-[max(1rem,env(safe-area-inset-top))] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 text-center">
+      <div
+        className="pointer-events-auto absolute inset-0 cursor-grab touch-none active:cursor-grabbing"
+        aria-label="Orbit campus overview"
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          if (pointers.current.size >= 2) {
+            drag.current = null;
+            pinch.current = span();
+          } else {
+            drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+          }
+        }}
+        onPointerMove={(event) => {
+          if (!pointers.current.has(event.pointerId)) return;
+          pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          if (pointers.current.size >= 2) {
+            const next = span();
+            if (next && pinch.current) engine?.zoomCamera(pinch.current / next);
+            pinch.current = next;
+            return;
+          }
+          if (drag.current?.id === event.pointerId) {
+            const dx = event.clientX - drag.current.x;
+            const dy = event.clientY - drag.current.y;
+            drag.current.x = event.clientX;
+            drag.current.y = event.clientY;
+            engine?.orbitCamera(dx, dy);
+          }
+        }}
+        onPointerUp={(event) => {
+          pointers.current.delete(event.pointerId);
+          if (drag.current?.id === event.pointerId) drag.current = null;
+          if (pointers.current.size < 2) pinch.current = null;
+        }}
+        onPointerCancel={(event) => {
+          pointers.current.delete(event.pointerId);
+          if (drag.current?.id === event.pointerId) drag.current = null;
+          if (pointers.current.size < 2) pinch.current = null;
+        }}
+      />
+
+      <div className="pointer-events-none absolute left-1/2 top-[max(1rem,env(safe-area-inset-top))] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 text-center">
         <p className="label-cinema text-primary/85">Campus overview</p>
         <p className="mt-1 font-display text-xl text-[#f4ead6] sm:text-2xl">Navodaya from above</p>
         <p className="mt-1 font-ui text-[9px] uppercase tracking-[0.16em] text-foreground/45">
@@ -591,12 +642,12 @@ function CameraOverviewOverlay({ engine }: { engine: GameEngine | null }) {
         </p>
       </div>
 
-      <div className="pointer-events-auto absolute right-[max(1rem,env(safe-area-inset-right))] top-1/2 flex -translate-y-1/2 flex-col gap-2">
+      <div className="pointer-events-none absolute right-[max(1rem,env(safe-area-inset-right))] top-1/2 z-10 flex -translate-y-1/2 flex-col gap-2">
         <button
           type="button"
           onClick={() => engine?.zoomCamera(0.84)}
           aria-label="Zoom in on campus"
-          className="flex size-11 items-center justify-center rounded-full border border-foreground/25 bg-black/55 text-foreground/85 backdrop-blur-sm transition hover:border-primary/70 hover:text-primary"
+          className="pointer-events-auto flex size-11 items-center justify-center rounded-full border border-foreground/25 bg-black/55 text-foreground/85 backdrop-blur-sm transition hover:border-primary/70 hover:text-primary"
         >
           <ZoomIn className="size-5" />
         </button>
@@ -604,13 +655,13 @@ function CameraOverviewOverlay({ engine }: { engine: GameEngine | null }) {
           type="button"
           onClick={() => engine?.zoomCamera(1.19)}
           aria-label="Zoom out on campus"
-          className="flex size-11 items-center justify-center rounded-full border border-foreground/25 bg-black/55 text-foreground/85 backdrop-blur-sm transition hover:border-primary/70 hover:text-primary"
+          className="pointer-events-auto flex size-11 items-center justify-center rounded-full border border-foreground/25 bg-black/55 text-foreground/85 backdrop-blur-sm transition hover:border-primary/70 hover:text-primary"
         >
           <ZoomOut className="size-5" />
         </button>
       </div>
 
-      <div className="absolute inset-x-0 bottom-[max(1.5rem,env(safe-area-inset-bottom))] flex justify-center">
+      <div className="pointer-events-none absolute inset-x-0 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-10 flex justify-center">
         <button
           type="button"
           onClick={() => engine?.exitCameraOverview()}

@@ -2,7 +2,13 @@ import * as THREE from "three";
 import type { CharacterSettings } from "../core/types";
 import { SKIN_TONES, UNIFORM_COLORS } from "../core/types";
 import type { InputController } from "../core/InputController";
-import { createCharacter, setRigSkin, setRigUniform, type CharacterRig } from "../world/CharacterFactory";
+import {
+  applyCharacterOptions,
+  characterOptions,
+  createCharacter,
+  setRigUniform,
+  type CharacterRig,
+} from "../world/CharacterFactory";
 import { damp, shortestAngle } from "../world/geometry";
 import type { BlockCollider } from "../world/WorldEnvironment";
 
@@ -40,6 +46,7 @@ export class PlayerController {
   crouching = false;
   currentSpeed = 0;
   private houseColor: string;
+  private character: CharacterSettings;
 
   onFootstep: (() => void) | null = null;
 
@@ -47,18 +54,25 @@ export class PlayerController {
   private stepTimer = 0;
 
   constructor(character: CharacterSettings, houseColor?: string) {
+    this.character = character;
     this.houseColor = houseColor ?? UNIFORM_COLORS[character.uniform];
-    this.rig = createCharacter({
-      uniform: this.houseColor,
-      skin: SKIN_TONES[character.skin],
-    });
+    this.rig = createCharacter(
+      characterOptions(character, this.houseColor, SKIN_TONES[character.skin], "high"),
+    );
     this.rig.group.name = "player";
   }
 
   setCharacter(character: CharacterSettings, houseColor: string = this.houseColor): void {
+    this.character = character;
     this.houseColor = houseColor;
-    setRigUniform(this.rig, houseColor);
-    setRigSkin(this.rig, SKIN_TONES[character.skin]);
+    applyCharacterOptions(
+      this.rig,
+      characterOptions(character, houseColor, SKIN_TONES[character.skin], "high"),
+    );
+  }
+
+  getCharacter(): CharacterSettings {
+    return this.character;
   }
 
   setCrouching(crouching: boolean): void {

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Check, LogOut, Shield } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LogOut, Shield, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   DEFAULT_CHARACTER_ID,
@@ -11,6 +11,8 @@ import {
 import { getStudentsForHouse, getStudent } from "../data/students";
 import { standingsForHouse } from "../data/competitions";
 import type { GameEngine } from "../core/GameEngine";
+import { DEFAULT_CHARACTER, type CharacterSettings } from "../core/types";
+import { CharacterPreview3D } from "./CharacterPreview3D";
 import { HouseEmblem, HouseFlag, StudentAvatar } from "./HouseVisuals";
 
 type Stage = "house" | "house-confirm" | "students" | "character" | "final";
@@ -33,6 +35,9 @@ export function CharacterCreation({
   const [stage, setStage] = useState<Stage>("house");
   const [selectedHouseId, setSelectedHouseId] = useState<HouseId>(DEFAULT_HOUSE_ID);
   const [selectedStudentId, setSelectedStudentId] = useState<string>(DEFAULT_CHARACTER_ID);
+  const [character, setCharacter] = useState<CharacterSettings>(
+    () => engine?.getCharacter() ?? DEFAULT_CHARACTER,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const house = getHouse(selectedHouseId) ?? getHouse(DEFAULT_HOUSE_ID)!;
@@ -51,6 +56,7 @@ export function CharacterCreation({
 
   const enterCampus = () => {
     if (!engine || !selectedStudent) return;
+    engine.setCharacter(character);
     const result = engine.startNewGameWith(selectedHouseId, selectedStudent.id);
     if (!result.ok) setError(result.error ?? "That selection could not be confirmed.");
   };
@@ -354,10 +360,10 @@ export function CharacterCreation({
             {stage === "character" && selectedStudent && (
               <section className="grid gap-8 lg:grid-cols-[0.75fr_1.1fr] lg:items-start">
                 <div className="mx-auto w-full max-w-sm">
-                  <StudentAvatar
-                    student={selectedStudent}
+                  <CharacterPreview3D
+                    character={character}
+                    houseColor={house.color}
                     className="aspect-[4/5] w-full shadow-[0_50px_120px_-55px_rgba(0,0,0,1)]"
-                    showPhotoNote
                   />
                   <div className="mt-3 flex items-center justify-between gap-3 border border-foreground/12 bg-[#100e0b]/80 px-4 py-3">
                     <div className="flex items-center gap-2.5">
@@ -370,7 +376,7 @@ export function CharacterCreation({
                       </div>
                     </div>
                     <span className="font-ui text-[8px] uppercase tracking-[0.18em] text-foreground/30">
-                      No photo supplied
+                      Live 3D preview
                     </span>
                   </div>
                 </div>
@@ -393,11 +399,11 @@ export function CharacterCreation({
                     <div className="bg-[#12100c] p-4">
                       <p className="label-cinema text-[8px] text-foreground/35">3D character</p>
                       <p className="mt-1.5 font-display text-base text-foreground/85">
-                        Procedural in-game model
+                        Modular 3D student
                       </p>
                       <p className="mt-1 font-ui text-[10px] leading-relaxed text-foreground/40">
-                        The same rig, house-coloured uniform and animations are loaded on campus.
-                        No external student model has been supplied.
+                        White shirt, navy trousers and tie, black shoes, school crest and a
+                        house-coloured badge. The same rig and appearance load on campus.
                       </p>
                     </div>
                     <div className="bg-[#12100c] p-4">
@@ -418,6 +424,174 @@ export function CharacterCreation({
                       House records are permanent. The two students named Suraj are distinct
                       records ({`ARV-002`} and {`NIL-005`}); selection never merges students by name.
                     </p>
+                  </div>
+
+                  <div className="mt-4 border border-foreground/12 bg-[#100e0b]/70 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="label-cinema text-primary/75">Appearance</p>
+                        <p className="mt-1 font-display text-lg text-[#f2e7d2]">Make the uniform yours.</p>
+                      </div>
+                      <Sparkles className="size-4 text-primary/60" />
+                    </div>
+                    <p className="mt-1.5 font-ui text-[10px] leading-relaxed text-foreground/40">
+                      The school uniform stays standard. Face, hair, skin, build and approved
+                      accessories are stored with this student save.
+                    </p>
+
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <AppearanceRow
+                        label="Face"
+                        value={character.face}
+                        options={[
+                          { value: "oval", label: "Oval" },
+                          { value: "round", label: "Round" },
+                          { value: "square", label: "Square" },
+                        ]}
+                        onChange={(value) =>
+                          setCharacter((current) => ({ ...current, face: value as CharacterSettings["face"] }))
+                        }
+                      />
+                      <AppearanceRow
+                        label="Build"
+                        value={character.build}
+                        options={[
+                          { value: "slim", label: "Slim" },
+                          { value: "regular", label: "Regular" },
+                          { value: "broad", label: "Broad" },
+                        ]}
+                        onChange={(value) =>
+                          setCharacter((current) => ({ ...current, build: value as CharacterSettings["build"] }))
+                        }
+                      />
+                      <AppearanceRow
+                        label="Hair"
+                        value={character.hairStyle}
+                        options={[
+                          { value: "short", label: "Short" },
+                          { value: "side", label: "Side part" },
+                          { value: "curly", label: "Curly" },
+                          { value: "bun", label: "Bun" },
+                          { value: "braid", label: "Braid" },
+                        ]}
+                        onChange={(value) =>
+                          setCharacter((current) => ({
+                            ...current,
+                            hairStyle: value as CharacterSettings["hairStyle"],
+                          }))
+                        }
+                      />
+                      <AppearanceRow
+                        label="Hair colour"
+                        value={character.hairColor}
+                        options={[
+                          { value: "black", label: "Black" },
+                          { value: "brown", label: "Brown" },
+                          { value: "soft", label: "Soft black" },
+                        ]}
+                        onChange={(value) =>
+                          setCharacter((current) => ({
+                            ...current,
+                            hairColor: value as CharacterSettings["hairColor"],
+                          }))
+                        }
+                      />
+                      <AppearanceRow
+                        label="Eyes"
+                        value={character.eyeColor}
+                        options={[
+                          { value: "brown", label: "Brown" },
+                          { value: "dark", label: "Dark" },
+                          { value: "hazel", label: "Hazel" },
+                        ]}
+                        onChange={(value) =>
+                          setCharacter((current) => ({ ...current, eyeColor: value as CharacterSettings["eyeColor"] }))
+                        }
+                      />
+                      <AppearanceRow
+                        label="Eyebrows"
+                        value={character.brows}
+                        options={[
+                          { value: "straight", label: "Straight" },
+                          { value: "soft", label: "Soft" },
+                          { value: "bold", label: "Bold" },
+                        ]}
+                        onChange={(value) =>
+                          setCharacter((current) => ({ ...current, brows: value as CharacterSettings["brows"] }))
+                        }
+                      />
+                      <AppearanceRow
+                        label="Skin tone"
+                        value={String(character.skin)}
+                        options={[
+                          { value: "0", label: "Tone 1" },
+                          { value: "1", label: "Tone 2" },
+                          { value: "2", label: "Tone 3" },
+                          { value: "3", label: "Tone 4" },
+                        ]}
+                        onChange={(value) =>
+                          setCharacter((current) => ({
+                            ...current,
+                            skin: Number(value) as CharacterSettings["skin"],
+                          }))
+                        }
+                      />
+                      <AppearanceRow
+                        label="Glasses"
+                        value={character.glasses}
+                        options={[
+                          { value: "none", label: "None" },
+                          { value: "round", label: "Round" },
+                          { value: "rect", label: "Rect" },
+                        ]}
+                        onChange={(value) =>
+                          setCharacter((current) => ({
+                            ...current,
+                            glasses: value as CharacterSettings["glasses"],
+                          }))
+                        }
+                      />
+                      <AppearanceRow
+                        label="Watch"
+                        value={character.watch}
+                        options={[
+                          { value: "none", label: "None" },
+                          { value: "steel", label: "Steel" },
+                          { value: "black", label: "Black" },
+                        ]}
+                        onChange={(value) =>
+                          setCharacter((current) => ({ ...current, watch: value as CharacterSettings["watch"] }))
+                        }
+                      />
+                      <AppearanceRow
+                        label="Backpack"
+                        value={character.backpack}
+                        options={[
+                          { value: "none", label: "None" },
+                          { value: "navy", label: "Navy" },
+                          { value: "olive", label: "Olive" },
+                        ]}
+                        onChange={(value) =>
+                          setCharacter((current) => ({
+                            ...current,
+                            backpack: value as CharacterSettings["backpack"],
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-foreground/10 pt-3">
+                      <p className="font-ui text-[9px] leading-relaxed text-foreground/35">
+                        House badge: <span style={{ color: house.color }}>{house.name}</span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => engine?.setCharacter(character)}
+                        className="inline-flex items-center gap-1.5 border border-foreground/20 px-3 py-2 font-ui text-[9px] uppercase tracking-[0.18em] text-foreground/65 transition hover:border-primary/60 hover:text-primary"
+                      >
+                        <Check className="size-3" /> Apply appearance
+                      </button>
+                    </div>
                   </div>
 
                   {error && (
@@ -510,6 +684,45 @@ export function CharacterCreation({
             )}
           </motion.main>
         </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+function AppearanceRow({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <p className="font-ui text-[9px] uppercase tracking-[0.16em] text-foreground/35">{label}</p>
+      <div className="mt-1.5 flex flex-wrap gap-1">
+        {options.map((option) => {
+          const active = option.value === value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              data-testid={`appearance-${label.toLowerCase().replace(/\s+/g, "-")}-${option.value}`}
+              aria-pressed={active}
+              onClick={() => onChange(option.value)}
+              className={`border px-2.5 py-1.5 font-ui text-[9px] transition ${
+                active
+                  ? "border-primary/65 bg-primary/12 text-primary"
+                  : "border-foreground/12 bg-black/20 text-foreground/50 hover:border-foreground/30 hover:text-foreground/75"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

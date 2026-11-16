@@ -320,11 +320,17 @@ export class GameEngine {
           step: engine.mission.stepIndex,
           done: engine.mission.done,
           prompt: state.prompt,
-          position: { x: engine.player.position.x, z: engine.player.position.z },
+          position: { x: engine.player.position.x, y: engine.player.position.y, z: engine.player.position.z },
+          playerRotation: engine.player.rotationY,
+          grounded: engine.player.grounded,
+          character: engine.store.getState().character,
           camera: {
             yaw: engine.cameraController.yaw,
+            viewYaw: engine.cameraController.getViewYaw(),
             pitch: engine.cameraController.pitch,
             distance: engine.cameraController.distance,
+            viewDistance: engine.cameraController.getDistance(),
+            renderedDistance: engine.cameraController.getRenderedDistance(engine.player.position),
             overview: engine.cameraController.isOverview,
           },
           ending: Boolean(state.ending),
@@ -1557,7 +1563,11 @@ export class GameEngine {
 
   zoomCamera(factor: number): void {
     this.cameraController.zoomBy(factor);
-    this.audio.uiClick();
+  }
+
+  /** Raw pixel orbit used by the overview gesture layer and touch controls. */
+  orbitCamera(dx: number, dy: number): void {
+    this.input.addLook(dx * 1.9, dy * 1.9);
   }
 
   enterCameraOverview(): boolean {

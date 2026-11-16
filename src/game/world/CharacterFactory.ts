@@ -51,6 +51,8 @@ export interface CharacterRig {
 export interface CharacterOptions {
   uniform: string;
   skin: string;
+  /** High is used for the player and creator preview; low for NPCs/remotes. */
+  detail?: "high" | "low";
   senior?: boolean;
   face?: FaceShape;
   hairStyle?: HairStyle;
@@ -114,6 +116,7 @@ function normalizeOptions(options: CharacterOptions): Required<CharacterOptions>
   return {
     uniform: options.uniform,
     skin: options.skin,
+    detail: options.detail ?? "low",
     senior: options.senior ?? false,
     face: options.face ?? "oval",
     hairStyle: options.hairStyle ?? (options.senior ? "braid" : "short"),
@@ -214,6 +217,7 @@ function makeGlasses(kind: GlassesStyle): THREE.Group | null {
 /** Builds a lightweight semi-realistic student out of reusable modular parts. */
 export function createCharacter(options: CharacterOptions): CharacterRig {
   const normalized = normalizeOptions(options);
+  const highDetail = normalized.detail === "high";
   const group = new THREE.Group();
   const skinMaterial = standard(normalized.skin, 0.7);
   const shirtMaterial = standard(SHIRT, 0.88);
@@ -244,14 +248,16 @@ export function createCharacter(options: CharacterOptions): CharacterRig {
   shoulderYoke.position.y = 0.3;
   torso.add(shoulderYoke);
 
-  const collar = new THREE.Group();
-  for (const side of [-1, 1]) {
-    const flap = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.06, 0.02), shirtMaterial));
-    flap.position.set(side * 0.042, 0.345, 0.12);
-    flap.rotation.z = side * 0.42;
-    collar.add(flap);
+  if (highDetail) {
+    const collar = new THREE.Group();
+    for (const side of [-1, 1]) {
+      const flap = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.06, 0.02), shirtMaterial));
+      flap.position.set(side * 0.042, 0.345, 0.12);
+      flap.rotation.z = side * 0.42;
+      collar.add(flap);
+    }
+    torso.add(collar);
   }
-  torso.add(collar);
 
   const tie = new THREE.Group();
   const tieKnot = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.045, 0.02), standard(TIE, 0.8)));
@@ -261,43 +267,63 @@ export function createCharacter(options: CharacterOptions): CharacterRig {
   tieBlade.position.set(0, 0.14, 0.15);
   tieBlade.rotation.x = -0.03;
   tie.add(tieBlade);
+  // The reference uniform has a subtle striped tie; keep it geometry-cheap.
+  if (highDetail) {
+    for (const y of [0.23, 0.17, 0.11, 0.05]) {
+      const stripe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.046, 0.007, 0.003),
+        standard("#8a99b5", 0.55),
+      );
+      stripe.position.set(0, y, 0.157);
+      stripe.rotation.z = -0.28;
+      tie.add(stripe);
+    }
+  }
   torso.add(tie);
 
   // School crest at the left chest and the house badge beside it.
   const crest = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.065, 0.012), standard("#e9dfc8", 0.5)));
   crest.position.set(-0.105, 0.215, 0.14);
   torso.add(crest);
-  const crestInk = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.038, 0.006), brassMaterial);
-  crestInk.position.set(-0.105, 0.215, 0.148);
-  torso.add(crestInk);
+  if (highDetail) {
+    const crestInk = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.038, 0.006), brassMaterial);
+    crestInk.position.set(-0.105, 0.215, 0.148);
+    torso.add(crestInk);
+  }
 
   const vest = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.072, 0.082, 0.014), badgeMaterial));
   vest.position.set(0.105, 0.215, 0.145);
   torso.add(vest);
-  const badgeInk = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.045, 0.006), whiteMaterial);
-  badgeInk.position.set(0.105, 0.215, 0.153);
-  torso.add(badgeInk);
+  if (highDetail) {
+    const badgeInk = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.045, 0.006), whiteMaterial);
+    badgeInk.position.set(0.105, 0.215, 0.153);
+    torso.add(badgeInk);
+  }
 
   const belt = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.05, 0.22), standard("#1b1a19", 0.7)));
   belt.position.y = -0.165;
   torso.add(belt);
-  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 0.012), brassMaterial);
-  buckle.position.set(0, -0.165, 0.122);
-  torso.add(buckle);
+  if (highDetail) {
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.035, 0.012), brassMaterial);
+    buckle.position.set(0, -0.165, 0.122);
+    torso.add(buckle);
+  }
 
   const backpack = new THREE.Group();
-  const packMaterial = standard(normalized.backpack === "olive" ? "#48553d" : "#283650", 0.85);
-  const pack = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.36, 0.16), packMaterial));
-  pack.position.set(0, 0.1, -0.17);
-  backpack.add(pack);
-  const pocket = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.05), packMaterial));
-  pocket.position.set(0, 0.04, -0.265);
-  backpack.add(pocket);
-  for (const side of [-1, 1]) {
-    const strap = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.34, 0.025), packMaterial));
-    strap.position.set(side * 0.11, 0.12, -0.085);
-    strap.rotation.x = -0.08;
-    backpack.add(strap);
+  if (highDetail) {
+    const packMaterial = standard(normalized.backpack === "olive" ? "#48553d" : "#283650", 0.85);
+    const pack = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.36, 0.16), packMaterial));
+    pack.position.set(0, 0.1, -0.17);
+    backpack.add(pack);
+    const pocket = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.05), packMaterial));
+    pocket.position.set(0, 0.04, -0.265);
+    backpack.add(pocket);
+    for (const side of [-1, 1]) {
+      const strap = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.34, 0.025), packMaterial));
+      strap.position.set(side * 0.11, 0.12, -0.085);
+      strap.rotation.x = -0.08;
+      backpack.add(strap);
+    }
   }
   torso.add(backpack);
 
@@ -315,39 +341,47 @@ export function createCharacter(options: CharacterOptions): CharacterRig {
   jaw.position.set(0, -0.075, 0.025);
   head.add(jaw);
 
-  for (const side of [-1, 1]) {
-    const ear = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), skinMaterial));
-    ear.position.set(side * 0.143, 0.01, 0);
-    ear.scale.set(0.6, 1, 0.85);
-    head.add(ear);
+  if (highDetail) {
+    for (const side of [-1, 1]) {
+      const ear = shadowed(new THREE.Mesh(new THREE.SphereGeometry(0.028, 8, 8), skinMaterial));
+      ear.position.set(side * 0.143, 0.01, 0);
+      ear.scale.set(0.6, 1, 0.85);
+      head.add(ear);
+    }
   }
 
   const eyeMaterials: THREE.MeshStandardMaterial[] = [];
   const eyes: THREE.Mesh[] = [];
   for (const x of [-0.052, 0.052]) {
-    const white = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), whiteMaterial);
-    white.position.set(x, 0.022, 0.128);
-    white.scale.set(1, 0.78, 0.5);
-    head.add(white);
+    if (highDetail) {
+      const white = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 8), whiteMaterial);
+      white.position.set(x, 0.022, 0.128);
+      white.scale.set(1, 0.78, 0.5);
+      head.add(white);
+    }
     const iris = new THREE.Mesh(new THREE.SphereGeometry(0.0105, 10, 8), eyeMaterial);
     iris.position.set(x, 0.022, 0.144);
     iris.scale.set(1, 1, 0.42);
     head.add(iris);
     eyeMaterials.push(eyeMaterial);
     eyes.push(iris);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.0048, 8, 6), standard("#100d0b", 0.5));
-    pupil.position.set(x, 0.022, 0.148);
-    pupil.scale.set(1, 1, 0.4);
-    head.add(pupil);
+    if (highDetail) {
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.0048, 8, 6), standard("#100d0b", 0.5));
+      pupil.position.set(x, 0.022, 0.148);
+      pupil.scale.set(1, 1, 0.4);
+      head.add(pupil);
+    }
   }
 
   const brows: THREE.Mesh[] = [];
-  for (const side of [-1, 1]) {
-    const brow = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.009, 0.008), browMaterial));
-    brow.position.set(side * 0.052, 0.058, 0.143);
-    brow.rotation.z = side * 0.08;
-    head.add(brow);
-    brows.push(brow);
+  if (highDetail) {
+    for (const side of [-1, 1]) {
+      const brow = shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.009, 0.008), browMaterial));
+      brow.position.set(side * 0.052, 0.058, 0.143);
+      brow.rotation.z = side * 0.08;
+      head.add(brow);
+      brows.push(brow);
+    }
   }
 
   const nose = shadowed(new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.055, 8), skinMaterial));
@@ -360,8 +394,8 @@ export function createCharacter(options: CharacterOptions): CharacterRig {
 
   const hairResult = makeHairVariants(hairMaterial);
   head.add(hairResult.groups.short, hairResult.groups.side, hairResult.groups.curly, hairResult.groups.bun, hairResult.groups.braid);
-  const glassesRound = makeGlasses("round");
-  const glassesRect = makeGlasses("rect");
+  const glassesRound = highDetail ? makeGlasses("round") : null;
+  const glassesRect = highDetail ? makeGlasses("rect") : null;
   if (glassesRound) head.add(glassesRound);
   if (glassesRect) head.add(glassesRect);
 
@@ -405,16 +439,18 @@ export function createCharacter(options: CharacterOptions): CharacterRig {
   const rightLeg = makeLeg(-1);
 
   const watch = new THREE.Group();
-  const watchBand = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.056, 0.056, 0.035, 12, 1, true),
-    standard(normalized.watch === "black" ? "#1b1b1b" : "#6d7379", 0.4, 0.4),
-  );
-  watchBand.position.y = -0.43;
-  watch.add(watchBand);
-  const watchFace = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.012, 12), standard("#d7cba9", 0.3, 0.2));
-  watchFace.rotation.z = Math.PI / 2;
-  watchFace.position.set(0.052, -0.43, 0);
-  watch.add(watchFace);
+  if (highDetail) {
+    const watchBand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.056, 0.056, 0.035, 12, 1, true),
+      standard(normalized.watch === "black" ? "#1b1b1b" : "#6d7379", 0.4, 0.4),
+    );
+    watchBand.position.y = -0.43;
+    watch.add(watchBand);
+    const watchFace = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.012, 12), standard("#d7cba9", 0.3, 0.2));
+    watchFace.rotation.z = Math.PI / 2;
+    watchFace.position.set(0.052, -0.43, 0);
+    watch.add(watchFace);
+  }
   leftArm.add(watch);
 
   group.add(leftArm, rightArm, leftLeg, rightLeg);
@@ -518,10 +554,12 @@ export function characterOptions(
   character: CharacterSettings,
   uniform: string,
   skin: string,
+  detail: "high" | "low" = "low",
 ): CharacterOptions {
   return {
     uniform,
     skin,
+    detail,
     face: character.face,
     hairStyle: character.hairStyle,
     hairColor: character.hairColor,

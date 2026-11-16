@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import { createCharacter, type CharacterRig } from "./CharacterFactory";
+import { characterOptions, createCharacter, type CharacterRig } from "./CharacterFactory";
 import { shortestAngle } from "./geometry";
 import { getHouse } from "../data/houses";
+import { DEFAULT_CHARACTER, SKIN_TONES, type CharacterSettings } from "../core/types";
 import {
   MP_HIDE_AFTER_MS,
   MP_SAFE_ZONE,
@@ -262,10 +263,14 @@ export class MultiplayerLayer {
 
   private createEntry(player: MultiplayerRemotePlayer): RemoteEntry {
     const house = getHouse(player.houseId);
-    const rig = createCharacter({
-      uniform: house?.color ?? "#6b7280",
-      skin: "#b57f56",
-    });
+    const appearance = remoteAppearance(player.characterId);
+    const rig = createCharacter(
+      characterOptions(
+        appearance,
+        house?.color ?? "#6b7280",
+        SKIN_TONES[appearance.skin],
+      ),
+    );
     rig.group.position.set(player.x, player.y, player.z);
     rig.group.rotation.y = player.rotationY;
     this.group.add(rig.group);
@@ -356,4 +361,28 @@ function disposeRig(rig: CharacterRig): void {
       else material?.dispose();
     }
   });
+}
+
+/**
+ * Presence currently transmits the roster characterId, not the local appearance
+ * payload. Deriving a stable look from that server-held identity keeps remote
+ * students visually distinct without trusting or migrating a client schema.
+ */
+function remoteAppearance(characterId: string): CharacterSettings {
+  let seed = 0;
+  for (const character of characterId || "ARV-001") {
+    seed = (seed * 31 + character.charCodeAt(0)) >>> 0;
+  }
+  const hairStyles: CharacterSettings["hairStyle"][] = ["short", "side", "curly", "bun", "braid"];
+  const hairColors: CharacterSettings["hairColor"][] = ["black", "brown", "soft"];
+  const builds: CharacterSettings["build"][] = ["slim", "regular", "broad"];
+  return {
+    ...DEFAULT_CHARACTER,
+    skin: (seed % 4) as CharacterSettings["skin"],
+    hairStyle: hairStyles[seed % hairStyles.length],
+    hairColor: hairColors[(seed >> 2) % hairColors.length],
+    build: builds[(seed >> 3) % builds.length],
+    glasses: seed % 7 === 0 ? "round" : "none",
+    backpack: seed % 3 === 0 ? "navy" : "none",
+  };
 }

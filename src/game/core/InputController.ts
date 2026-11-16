@@ -33,7 +33,8 @@ export class InputController {
     window.addEventListener("pointerup", this.handlePointerUp);
     window.addEventListener("pointermove", this.handlePointerMove);
     element.addEventListener("contextmenu", this.handleContextMenu);
-    element.addEventListener("wheel", this.handleWheel, { passive: false });
+    // The mobile look overlay sits above the canvas, so listen at window level.
+    window.addEventListener("wheel", this.handleWheel, { passive: false });
   }
 
   detach(): void {
@@ -41,8 +42,8 @@ export class InputController {
     if (element) {
       element.removeEventListener("pointerdown", this.handlePointerDown);
       element.removeEventListener("contextmenu", this.handleContextMenu);
-      element.removeEventListener("wheel", this.handleWheel);
     }
+    window.removeEventListener("wheel", this.handleWheel);
     window.removeEventListener("keydown", this.handleKeyDown);
     window.removeEventListener("keyup", this.handleKeyUp);
     window.removeEventListener("blur", this.handleBlur);
