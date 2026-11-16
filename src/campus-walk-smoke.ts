@@ -1,5 +1,5 @@
 /**
- * Temporary headless geometry audit for the new academic/indoor complex.
+ * Headless geometry audit for the new academic/indoor complex.
  * It builds the real WorldEnvironment with a no-op 2D canvas and pathfinds
  * through the actual colliders, floors and stair ramps.
  */
