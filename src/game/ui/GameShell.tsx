@@ -153,6 +153,7 @@ export function GameShell({
               crouching={state.crouching}
             />
           )}
+          {state.isTouch && <OrientationHint />}
         </>
       )}
 
@@ -211,6 +212,50 @@ export function GameShell({
       {children}
 
       <Toast message={state.toast} />
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------- orientation */
+
+function OrientationHint() {
+  const [portrait, setPortrait] = useState(
+    () => typeof window !== "undefined" && window.innerHeight > window.innerWidth,
+  );
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    const update = () => setPortrait(window.innerHeight > window.innerWidth);
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    const timer = window.setTimeout(() => setDismissed(true), 7000);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  if (!portrait || dismissed) return null;
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-30 flex justify-center px-16">
+      <div
+        role="status"
+        className="pointer-events-auto flex items-center gap-2.5 rounded-full border border-[#e7d3a8]/25 bg-[#0c120d]/88 px-3 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-sm"
+      >
+        <Smartphone className="size-3.5 shrink-0 rotate-90 text-[#e6c78f]" strokeWidth={1.6} />
+        <span className="font-ui text-[10px] leading-tight text-[#efe4cd]/90">
+          Rotate for a wider campus view
+        </span>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          aria-label="Dismiss orientation suggestion"
+          className="ml-0.5 shrink-0 rounded-full p-0.5 text-foreground/45 transition hover:text-foreground"
+        >
+          <X className="size-3" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -488,9 +533,9 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
                         <Smartphone className="size-3" /> Touch
                       </p>
                       <ul className="mt-3 space-y-1.5 font-ui text-[11px] text-foreground/70">
-                        <li>Left stick — walk</li>
-                        <li>Drag the right side — look</li>
-                        <li>Crouch, Jump and Interact buttons</li>
+                        <li>Left stick — walk · Run — hold</li>
+                        <li>Drag the open right area — look</li>
+                        <li>Run, Crouch, Jump and Interact buttons</li>
                         <li>Tap the campus to begin looking</li>
                       </ul>
                     </div>
@@ -569,7 +614,7 @@ function Hud({
           </p>
         )}
         <p className="mt-1.5 font-ui text-[9px] uppercase tracking-[0.16em] text-[#b9c69d]/55">
-          Campus route · {state.exploration?.discovered ?? 0}/{state.exploration?.total ?? 10}
+          Campus route · {state.exploration?.discovered ?? 0}/{state.exploration?.total ?? 12}
         </p>
         <div className="mt-2.5 flex items-center gap-1.5">
           {Array.from({ length: mission.total }).map((_, index) => (
@@ -612,7 +657,7 @@ function Hud({
                 Campus
               </span>
               <span className="mt-0.5 block font-ui text-[7px] uppercase tracking-[0.14em] text-foreground/30">
-                {state.exploration?.discovered ?? 0} / {state.exploration?.total ?? 10} stops
+                {state.exploration?.discovered ?? 0} / {state.exploration?.total ?? 12} stops
               </span>
             </span>
           </button>

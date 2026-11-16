@@ -31,6 +31,31 @@ export interface BlockCollider {
   maxZ: number;
   active: boolean;
   label: string;
+  /** Vertical limits let an upper storey wall coexist with a ground room. */
+  minY?: number;
+  maxY?: number;
+}
+
+/** A level, walkable surface. Upper storeys are real collision floors. */
+export interface FloorZone {
+  id: string;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+  height: number;
+}
+
+/** A straight stair flight, treated as a smooth height ramp for movement. */
+export interface FloorRamp {
+  id: string;
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+  width: number;
+  startY: number;
+  endY: number;
 }
 
 export interface WorldInteractable {
@@ -155,13 +180,15 @@ const START_MARKER_Y = 0.06;
 export class WorldEnvironment {
   readonly group = new THREE.Group();
   readonly colliders: BlockCollider[] = [];
+  readonly floors: FloorZone[] = [];
+  readonly ramps: FloorRamp[] = [];
   readonly occluders: THREE.Box3[] = [];
   readonly interactables: WorldInteractable[] = [];
   readonly doors: Door[] = [];
   readonly paths: PathSegment[] = [];
   private treeExclusions: WorldZone[] = [];
   readonly zones: Record<"classroom" | "hostel", WorldZone> = {
-    classroom: { minX: -30, maxX: -16, minZ: -6, maxZ: 6 },
+    classroom: { minX: -35.5, maxX: -16.4, minZ: -12.6, maxZ: 10.6 },
     hostel: { minX: 16, maxX: 30, minZ: 4, maxZ: 14 },
   };
   readonly spawn = new THREE.Vector3(0, 0, 42);
@@ -346,6 +373,17 @@ export class WorldEnvironment {
       ["signPrincipal", "PRINCIPAL", "KARYALAY · PRASHASAN"],
       ["signMess", "ANNAPOORNA", "DINING HALL · SERVING COUNTER"],
       ["signCourts", "KHEL KSHETRA", "BASKETBALL · VOLLEYBALL COURTS"],
+      ["signRoom101", "ROOM 101", "CLASS VII A · GROUND FLOOR"],
+      ["signRoom102", "ROOM 102", "CLASS VII B · GROUND FLOOR"],
+      ["signRoom103", "ROOM 103", "CLASS VI A · GROUND FLOOR"],
+      ["signRoom201", "ROOM 201", "CLASS VIII A · FIRST FLOOR"],
+      ["signRoom202", "ROOM 202", "CLASS VIII B · FIRST FLOOR"],
+      ["signStaff", "STAFF ROOM", "ACADEMIC BLOCK A · FIRST FLOOR"],
+      ["signWashroom", "WASHROOM", "ACADEMIC BLOCK A · GROUND FLOOR"],
+      ["signActivity", "ACTIVITY ROOM", "ACADEMIC BLOCK A · GROUND FLOOR"],
+      ["signBlockB", "ABHYAS BHAVAN", "ACADEMIC BLOCK B · COMPUTER LAB"],
+      ["signComputer", "COMPUTER LAB", "ACADEMIC BLOCK B · PRACTICALS"],
+      ["signIndoorSports", "INDOOR SPORTS HALL", "BADMINTON · TABLE TENNIS"],
     ];
     for (const [key, main, sub] of signs) {
       const map = signTexture(main, sub);
@@ -482,8 +520,12 @@ export class WorldEnvironment {
   }
 
   private addInteriorLight(x: number, z: number, intensity = 7): void {
+    this.addInteriorLightAt(x, 2.9, z, intensity);
+  }
+
+  private addInteriorLightAt(x: number, y: number, z: number, intensity = 7): void {
     const light = new THREE.PointLight(0xffd8a4, intensity, 13, 2);
-    light.position.set(x, 2.9, z);
+    light.position.set(x, y, z);
     this.group.add(light);
     this.pointLights.push(light);
   }
@@ -520,6 +562,8 @@ export class WorldEnvironment {
     await this.stage(0.78, "Adding administration and laboratories", onProgress);
     this.buildAdministration();
     this.buildScienceLabs();
+    this.buildAcademicBlockB();
+    this.buildIndoorSportsHall();
 
     await this.stage(0.84, "Marking the sports ground", onProgress);
     this.buildSportsGround();
@@ -545,11 +589,57 @@ export class WorldEnvironment {
     await this.stage(1, "Ready", onProgress);
   }
 
-  private collider(minX: number, maxX: number, minZ: number, maxZ: number, label: string): BlockCollider {
-    const box: BlockCollider = { minX, maxX, minZ, maxZ, active: true, label };
+  private collider(
+    minX: number,
+    maxX: number,
+    minZ: number,
+    maxZ: number,
+    label: string,
+    minY?: number,
+    maxY?: number,
+  ): BlockCollider {
+    const box: BlockCollider = { minX, maxX, minZ, maxZ, active: true, label, minY, maxY };
     this.colliders.push(box);
     return box;
   }
+
+  private floor(id: string, minX: number, maxX: number, minZ: number, maxZ: number, height: number): void {
+    this.floors.push({ id, minX, maxX, minZ, maxZ, height });
+  }
+
+  private ramp(id: string, x1: number, z1: number, x2: number, z2: number, width: number, startY: number, endY: number): void {
+    this.ramps.push({ id, x1, z1, x2, z2, width, startY, endY });
+  }
+
+  /**
+   * Highest walkable surface the player can reach from their current height.
+   * A surface more than 55 cm above the player is overhead, not a step, so the
+   * ground floor stays on the ground under a first-floor slab.
+   */
+  readonly walkHeightAt = (x: number, z: number, currentY: number): number => {
+    let best = 0;
+    const reach = currentY + 0.55;
+    for (const surface of this.floors) {
+      if (surface.height > reach || surface.height <= best) continue;
+      if (x >= surface.minX && x <= surface.maxX && z >= surface.minZ && z <= surface.maxZ) {
+        best = surface.height;
+      }
+    }
+    for (const ramp of this.ramps) {
+      const dx = ramp.x2 - ramp.x1;
+      const dz = ramp.z2 - ramp.z1;
+      const lengthSq = dx * dx + dz * dz;
+      if (lengthSq < 0.0001) continue;
+      const t = ((x - ramp.x1) * dx + (z - ramp.z1) * dz) / lengthSq;
+      if (t < 0 || t > 1) continue;
+      const px = ramp.x1 + dx * t;
+      const pz = ramp.z1 + dz * t;
+      if (Math.hypot(x - px, z - pz) > ramp.width / 2) continue;
+      const height = ramp.startY + (ramp.endY - ramp.startY) * t;
+      if (height <= reach && height > best) best = height;
+    }
+    return best;
+  };
 
   private occluder(cx: number, cy: number, cz: number, w: number, h: number, d: number): void {
     this.occluders.push(
@@ -614,6 +704,77 @@ export class WorldEnvironment {
       this.collider(x - 0.18, x + 0.18, a, b, `${label}-wall`);
       this.occluder(x, height / 2, (a + b) / 2, 0.36, height, b - a);
     }
+  }
+
+  /** Vertical-scoped wall for a storey with any number of doorway gaps. */
+  private wallLevelX(
+    z: number,
+    x1: number,
+    x2: number,
+    baseY: number,
+    height: number,
+    key: string,
+    label: string,
+    gaps: Array<[number, number]> = [],
+  ): void {
+    const sorted = [...gaps].sort((a, b) => a[0] - b[0]);
+    let cursor = x1;
+    for (const [gapStart, gapEnd] of sorted) {
+      if (gapStart > cursor) this.wallLevelSegmentX(z, cursor, gapStart, baseY, height, key, label);
+      cursor = Math.max(cursor, gapEnd);
+    }
+    if (cursor < x2) this.wallLevelSegmentX(z, cursor, x2, baseY, height, key, label);
+  }
+
+  private wallLevelSegmentX(
+    z: number,
+    x1: number,
+    x2: number,
+    baseY: number,
+    height: number,
+    key: string,
+    label: string,
+  ): void {
+    const w = x2 - x1;
+    if (w <= 0.02) return;
+    this.builder.box(key, { w, h: height, d: 0.36 }, (x1 + x2) / 2, baseY + height / 2, z, {});
+    this.collider(x1, x2, z - 0.18, z + 0.18, `${label}-wall`, baseY, baseY + height);
+    this.occluder((x1 + x2) / 2, baseY + height / 2, z, w, height, 0.36);
+  }
+
+  private wallLevelZ(
+    x: number,
+    z1: number,
+    z2: number,
+    baseY: number,
+    height: number,
+    key: string,
+    label: string,
+    gaps: Array<[number, number]> = [],
+  ): void {
+    const sorted = [...gaps].sort((a, b) => a[0] - b[0]);
+    let cursor = z1;
+    for (const [gapStart, gapEnd] of sorted) {
+      if (gapStart > cursor) this.wallLevelSegmentZ(x, cursor, gapStart, baseY, height, key, label);
+      cursor = Math.max(cursor, gapEnd);
+    }
+    if (cursor < z2) this.wallLevelSegmentZ(x, cursor, z2, baseY, height, key, label);
+  }
+
+  private wallLevelSegmentZ(
+    x: number,
+    z1: number,
+    z2: number,
+    baseY: number,
+    height: number,
+    key: string,
+    label: string,
+  ): void {
+    const d = z2 - z1;
+    if (d <= 0.02) return;
+    this.builder.box(key, { w: 0.36, h: height, d }, x, baseY + height / 2, (z1 + z2) / 2, {});
+    this.collider(x - 0.18, x + 0.18, z1, z2, `${label}-wall`, baseY, baseY + height);
+    this.occluder(x, baseY + height / 2, (z1 + z2) / 2, 0.36, height, d);
   }
 
   private interiorTable(x: number, z: number, w: number, d: number, collide = true): void {
@@ -958,7 +1119,8 @@ export class WorldEnvironment {
     this.builder.box("hedge", { w: 7, h: 0.8, d: 1.4 }, 12.6, 0.55, -4.4, {});
   }
 
-  private buildAcademicBlock(): void {
+  /** Prior single-room academic block, retained only as a build reference. */
+  private buildLegacyAcademicBlock(): void {
     const wallH = 3.5;
     // Ground-floor wings (solid) leave a room carved out in the middle.
     this.solid("plaster", 28, 3.8, 12, -30, -12, "academic-wing-north");
@@ -1051,6 +1213,340 @@ export class WorldEnvironment {
       closing: "Close the classroom door",
     });
     door.collider = this.collider(-16.3, -15.7, -1.15, 1.15, "classroom-door");
+  }
+
+  /**
+   * Two-storey Academic Block A. The ground and first floors share one
+   * footprint but use height-scoped walls, real stair ramps and separate
+   * collision floors so the upper corridor is genuinely walkable.
+   */
+  private buildAcademicBlock(): void {
+    const x1 = -44;
+    const x2 = -16;
+    const z1 = -13;
+    const z2 = 11;
+    const innerX1 = x1 + 0.4;
+    const innerX2 = x2 - 0.4;
+    const innerZ1 = z1 + 0.4;
+    const innerZ2 = z2 - 0.4;
+    const floorY = 3.6;
+    const groundH = 3.5;
+    const upperH = 3.6;
+    const roofY = 7.35;
+    const corridorNorth = -1.6;
+    const corridorSouth = 1.6;
+    const stairX = -35.5;
+
+    this.builder.box("stonePlaza", { w: 28.6, h: 0.06, d: 24.6 }, -30, 0.03, -1, {});
+
+    // Shell. East facade is built in two bands because the entrance opens onto
+    // the portico below while a balcony door opens over it on the first floor.
+    this.wallLevelX(z1, x1, x2, 0, 7.2, "plaster", "academic-shell-north");
+    this.wallLevelX(z2, x1, x2, 0, 7.2, "plaster", "academic-shell-south");
+    this.wallLevelZ(x1, z1, z2, 0, 7.2, "plaster", "academic-shell-west");
+    this.wallLevelZ(x2, z1, z2, 0, groundH + 0.1, "plaster", "academic-shell-east", [[-1.2, 1.2]]);
+    this.wallLevelZ(x2, z1, z2, floorY, upperH, "plaster", "academic-shell-east-upper", [[-1.1, 1.1]]);
+    this.builder.box("plaster", { w: 0.4, h: 1.1, d: 2.2 }, x2, 6.65, 0, {});
+    this.builder.box("plaster", { w: 0.4, h: 0.8, d: 2.4 }, x2, 3.2, 0, {});
+
+    // First-floor slab, with a real stairwell opening at the west end.
+    this.builder.box("cement", { w: 19.1, h: 0.26, d: 23.2 }, -25.95, floorY - 0.14, -1, {});
+    this.builder.box("cement", { w: 8.1, h: 0.26, d: 7.6 }, -39.55, floorY - 0.14, -8.8, {});
+    this.builder.box("cement", { w: 8.1, h: 0.26, d: 5.6 }, -39.55, floorY - 0.14, 7.8, {});
+    this.builder.box("cement", { w: 1.4, h: 0.26, d: 3.1 }, -35.75, floorY - 0.14, -2.95, {});
+    this.floor("academic-upper", -35.5, innerX2, -12.6, 10.6, floorY);
+    this.floor("academic-upper-landing", -36.4, -35.1, -4.4, 1.6, floorY);
+
+    // Ground-level corridor and room partitions.
+    const northDoors: Array<[number, number]> = [[-32.2, -30.4], [-22.2, -20.4]];
+    const southDoors: Array<[number, number]> = [[-32.2, -30.4], [-22.2, -20.4]];
+    this.wallLevelX(corridorNorth, stairX, innerX2, 0, groundH, "plasterWarm", "academic-gf", northDoors);
+    this.wallLevelX(corridorSouth, stairX, innerX2, 0, groundH, "plasterWarm", "academic-gf", southDoors);
+    this.wallLevelZ(-26, innerZ1, corridorNorth, 0, 7.2, "plasterWarm", "academic-gf-partition");
+    this.wallLevelZ(-26, corridorSouth, innerZ2, 0, 7.2, "plasterWarm", "academic-gf-partition");
+    this.wallLevelX(-5, x1, stairX, 0, groundH, "plasterWarm", "academic-washroom", [[-41, -39.4]]);
+    this.wallLevelX(5, x1, stairX, 0, groundH, "plasterWarm", "academic-store");
+    this.wallLevelZ(stairX, -12.6, -5, 0, 7.2, "plasterWarm", "academic-washroom-east");
+    this.wallLevelZ(stairX, -5, corridorNorth, 0, groundH, "plasterWarm", "academic-stair-north");
+    this.wallLevelZ(stairX, -5, -4.4, floorY, upperH, "plasterWarm", "academic-ff-west");
+    this.wallLevelZ(stairX, corridorSouth, 5, 0, 7.2, "plasterWarm", "academic-stair-south");
+    this.wallLevelZ(stairX, 5, 10.6, 0, groundH, "plasterWarm", "academic-store-wall", [[7, 8.5]]);
+    this.wallLevelZ(stairX, 5, 10.6, floorY, upperH, "plasterWarm", "academic-upper-west");
+
+    // First-floor corridor and classrooms. The gap at the west end is the
+    // stair arrival, not a missing wall.
+    this.wallLevelX(corridorNorth, stairX, innerX2, floorY, upperH - 0.1, "plasterWarm", "academic-ff", [
+      [-36.2, -33.6],
+      ...northDoors,
+    ]);
+    this.wallLevelX(corridorSouth, stairX, innerX2, floorY, upperH - 0.1, "plasterWarm", "academic-ff", southDoors);
+    this.wallLevelZ(-26, innerZ1, corridorNorth, floorY, upperH - 0.1, "plasterWarm", "academic-ff-partition");
+    this.wallLevelZ(-26, corridorSouth, innerZ2, floorY, upperH - 0.1, "plasterWarm", "academic-ff-partition");
+    this.wallLevelZ(stairX, -12.6, -4.4, floorY, upperH - 0.1, "plasterWarm", "academic-ff-west");
+    this.wallLevelZ(stairX, 1.6, 10.6, floorY, upperH - 0.1, "plasterWarm", "academic-ff-west");
+
+    // Ceiling, roof, parapet and rooftop tank.
+    this.builder.box("plaster", { w: 27.2, h: 0.18, d: 23.2 }, -30, 7.02, -1, {});
+    this.builder.box("roof", { w: 29.2, h: 0.32, d: 25.2 }, -30, roofY, -1, {});
+    this.builder.box("plinth", { w: 29.4, h: 0.55, d: 25.4 }, -30, roofY + 0.42, -1, {});
+    for (const [wx, wz, ww, wd] of [
+      [-30, z1 + 0.2, 29.4, 0.45],
+      [-30, z2 - 0.2, 29.4, 0.45],
+      [x1 + 0.2, -1, 0.45, 25.4],
+      [x2 - 0.2, -1, 0.45, 25.4],
+    ] as const) {
+      this.builder.box("plaster", { w: ww, h: 0.75, d: wd }, wx, roofY + 0.75, wz, {});
+    }
+    this.builder.cylinder("darkTrim", 1.25, 1.25, 1.55, 14, -40, 8.35, -8, {});
+    this.builder.cylinder("metal", 0.1, 0.1, 0.8, 6, -41, 7.75, -8.8, {});
+    this.builder.cylinder("metal", 0.1, 0.1, 0.8, 6, -39, 7.75, -8.8, {});
+
+    // Stair hall. Two straight flights with a half-landing, each with a
+    // matching walk-height ramp and step geometry.
+    const run = 6 / 12;
+    for (let index = 0; index < 12; index += 1) {
+      const height = (1.8 / 12) * (index + 1);
+      this.builder.box("stonePlaza", { w: run + 0.02, h: height, d: 2.2 }, -36 - run * (index + 0.5), height / 2, 3.2, {});
+      const upperHeight = 1.8 + (1.8 / 12) * (index + 1);
+      this.builder.box("stonePlaza", { w: run + 0.02, h: upperHeight - 1.8, d: 2.2 }, -42 + run * (index + 0.5), (upperHeight + 1.8) / 2, -3.2, {});
+    }
+    this.builder.box("stonePlaza", { w: 1.6, h: 0.22, d: 6.4 }, -42.7, 1.79, 0, {});
+    this.builder.box("stonePlaza", { w: 1.4, h: 0.22, d: 3.1 }, -35.75, 3.5, -2.95, {});
+    this.ramp("academic-stair-up", -36, 3.2, -42, 3.2, 2.2, 0, 1.8);
+    this.floor("academic-stair-landing", -43.4, -41.9, -3.2, 3.2, 1.8);
+    this.ramp("academic-stair-top", -42, -3.2, -36, -3.2, 2.2, 1.8, 3.6);
+    this.collider(-42.0, -37.0, 2.02, 2.18, "academic-stair-rail", 0, 3.8);
+    this.collider(-42.0, -37.0, 4.22, 4.38, "academic-stair-rail", 0, 3.8);
+    this.collider(-42.0, -37.0, -4.38, -4.22, "academic-stair-rail", 1.7, 5.4);
+    this.collider(-42.0, -37.0, -2.18, -2.02, "academic-stair-rail", 1.7, 5.4);
+    for (const z of [2.1, 4.3, -4.3, -2.1]) {
+      for (let index = 0; index <= 4; index += 1) {
+        const x = -37.3 - index * 1.5;
+        const y = z > 0 ? index * 0.3 : 1.8 + index * 0.3;
+        this.builder.cylinder("woodDark", 0.04, 0.045, 0.95, 6, x, y + 0.48, z, {});
+      }
+    }
+
+    // East balcony over the portico, with real railings and a floor zone.
+    this.builder.box("stonePlaza", { w: 2.9, h: 0.24, d: 6.4 }, -14.55, floorY - 0.12, 0, {});
+    this.floor("academic-balcony", -16.6, -13.1, -3.2, 3.2, floorY);
+    this.builder.box("stonePlaza", { w: 0.7, h: 0.22, d: 2.2 }, -16.2, floorY - 0.11, 0, {});
+    this.builder.box("metal", { w: 0.08, h: 0.98, d: 6.4 }, -13.2, floorY + 0.5, 0, {});
+    this.builder.box("metal", { w: 2.8, h: 0.98, d: 0.08 }, -14.55, floorY + 0.5, -3.2, {});
+    this.builder.box("metal", { w: 2.8, h: 0.98, d: 0.08 }, -14.55, floorY + 0.5, 3.2, {});
+    this.collider(-13.3, -13.1, -3.2, 3.2, "academic-balcony-rail", floorY, floorY + 1.1);
+
+    this.collider(-16, -13.1, -3.3, -3.1, "academic-balcony-rail", floorY, floorY + 1.1);
+    this.collider(-16, -13.1, 3.1, 3.3, "academic-balcony-rail", floorY, floorY + 1.1);
+
+    // Portico, steps and veranda columns.
+    this.builder.box("roof", { w: 3.8, h: 0.24, d: 7.2 }, -14.3, 3.35, 0, {});
+    this.builder.box("stageStone", { w: 2.4, h: 0.05, d: 4.6 }, -14.8, 0.03, 0, {});
+    for (const z of [-3.3, 3.3]) {
+      this.builder.cylinder("plasterCool", 0.2, 0.24, 3.3, 8, -12.9, 1.65, z, {});
+      this.collider(-13.2, -12.6, z - 0.3, z + 0.3, "academic-portico-column");
+    }
+    for (let step = 0; step < 3; step += 1) {
+      this.builder.box("stageStone", { w: 0.55, h: 0.16, d: 3.6 }, -12.5 - step * 0.5, 0.08 + step * 0.16, 0, {});
+    }
+
+    // Facade windows: real inset frames rather than a flat texture.
+    for (const baseY of [1.8, 5.35]) {
+      for (const z of [-9.4, -6.1, 6.1, 9.4]) {
+        if (baseY > 4 && Math.abs(z) < 4.5) continue;
+        this.builder.box("whitePaint", { w: 0.16, h: 1.7, d: 1.9 }, -15.86, baseY, z, {});
+        this.builder.box("glass", { w: 0.1, h: 1.45, d: 1.6 }, -15.74, baseY, z, {});
+        this.builder.box("whitePaint", { w: 0.22, h: 0.08, d: 1.7 }, -15.66, baseY - 0.85, z, {});
+      }
+      for (let index = 0; index < 5; index += 1) {
+        const x = -40.5 + index * 5.4;
+        for (const zSide of [z1, z2]) {
+          this.builder.box("whitePaint", { w: 1.9, h: 1.7, d: 0.16 }, x, baseY, zSide + (zSide < 0 ? 0.14 : -0.14), {});
+          this.builder.box("glass", { w: 1.6, h: 1.45, d: 0.1 }, x, baseY, zSide + (zSide < 0 ? 0.26 : -0.26), {});
+        }
+      }
+    }
+    this.sign("signAcademic", 5.4, 1.35, -15.62, 4.35, 0, Math.PI / 2);
+
+    // Room furniture. The helper keeps the same classroom language on both
+    // floors and leaves the corridor and door approaches clear.
+    const classroom = (left: number, right: number, back: number, front: number, baseY: number, boardFacing: 1 | -1) => {
+      const boardZ = boardFacing > 0 ? back + 0.22 : front - 0.22;
+      this.builder.plane("chalk", 4.2, 1.9, (left + right) / 2, baseY + 1.95, boardZ, { rotY: boardFacing > 0 ? 0 : Math.PI });
+      this.builder.box("woodDark", { w: 4.4, h: 2.1, d: 0.08 }, (left + right) / 2, baseY + 1.95, boardZ + (boardFacing > 0 ? -0.04 : 0.04), {});
+      this.builder.box("woodLight", { w: 1.8, h: 0.08, d: 0.8 }, (left + right) / 2, baseY + 0.8, boardZ + boardFacing * 0.8, {});
+      const rows = Math.max(1, Math.min(3, Math.floor((front - back - 4.4) / 2.5) + 1));
+      for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < 2; col += 1) {
+          const x = left + 2.5 + col * 4.0;
+          const z = back + 4.4 + row * 2.5;
+          this.builder.box("woodLight", { w: 1.45, h: 0.07, d: 0.7 }, x, baseY + 0.76, z, {});
+          this.builder.box("woodDark", { w: 0.09, h: 0.72, d: 0.09 }, x - 0.62, baseY + 0.38, z - 0.25, {});
+          this.builder.box("woodDark", { w: 0.09, h: 0.72, d: 0.09 }, x + 0.62, baseY + 0.38, z - 0.25, {});
+          this.builder.box("woodDark", { w: 0.45, h: 0.42, d: 1.25 }, x + 1.25, baseY + 0.24, z, {});
+          this.builder.box("woodLight", { w: 0.45, h: 0.06, d: 1.25 }, x + 1.25, baseY + 0.46, z, {});
+        }
+      }
+      this.builder.plane("notice", 1.7, 1.1, right - 0.5, baseY + 1.8, back + (boardFacing > 0 ? 0.24 : 0), { rotY: boardFacing > 0 ? 0 : Math.PI });
+    };
+
+    classroom(-35.5, -26, innerZ1, corridorNorth, 0, 1);
+    classroom(-26, innerX2, innerZ1, corridorNorth, 0, 1);
+    classroom(-35.5, -26, corridorSouth, innerZ2, 0, -1);
+    classroom(-35.5, -26, innerZ1, corridorNorth, floorY, 1);
+    classroom(-26, innerX2, innerZ1, corridorNorth, floorY, 1);
+    classroom(-35.5, -26, corridorSouth, innerZ2, floorY, -1);
+
+    // Activity room, south-east of the ground corridor.
+    for (const [x, z] of [[-22.5, 4.3], [-19.5, 4.3], [-22.5, 7.4], [-19.5, 7.4]] as const) {
+      this.builder.box("woodLight", { w: 2.0, h: 0.08, d: 0.9 }, x, 0.78, z, {});
+      this.builder.box("woodDark", { w: 0.1, h: 0.74, d: 0.1 }, x - 0.7, 0.37, z - 0.3, {});
+      this.builder.box("woodDark", { w: 0.1, h: 0.74, d: 0.1 }, x + 0.7, 0.37, z - 0.3, {});
+      this.builder.box("woodDark", { w: 0.1, h: 0.74, d: 0.1 }, x - 0.7, 0.37, z + 0.3, {});
+      this.builder.box("woodDark", { w: 0.1, h: 0.74, d: 0.1 }, x + 0.7, 0.37, z + 0.3, {});
+      this.builder.box("woodDark", { w: 0.44, h: 0.42, d: 0.44 }, x - 0.65, 0.22, z + 0.8, {});
+      this.builder.box("woodDark", { w: 0.44, h: 0.42, d: 0.44 }, x + 0.65, 0.22, z + 0.8, {});
+    }
+    this.builder.plane("chalk", 3.4, 1.6, -21.2, 2.0, 10.3, { rotY: Math.PI });
+    this.builder.box("woodDark", { w: 3.6, h: 0.76, d: 0.55 }, -21.2, 0.38, 9.8, {});
+    for (let index = 0; index < 5; index += 1) {
+      this.builder.box("paper", { w: 0.5, h: 0.04, d: 0.36 }, -22.6 + index * 0.7, 0.8, 9.8, {});
+    }
+
+    // Ground-west washroom and the activity store behind the south classroom.
+    for (let index = 0; index < 3; index += 1) {
+      const z = -11.6 + index * 1.35;
+      this.builder.box("whitePaint", { w: 1.0, h: 0.42, d: 1.15 }, -42.7, 0.21, z, {});
+      this.builder.box("whitePaint", { w: 0.9, h: 1.9, d: 0.08 }, -42.7, 1.4, z, {});
+    }
+    this.builder.box("cement", { w: 2.8, h: 0.82, d: 0.55 }, -38.3, 0.41, -12.2, {});
+    for (const x of [-39.4, -38.3, -37.2]) {
+      this.builder.cylinder("brass", 0.03, 0.03, 0.28, 6, x, 1.0, -12.0, {});
+      this.builder.box("glass", { w: 0.55, h: 0.7, d: 0.05 }, x, 1.45, -12.45, {});
+    }
+    this.builder.plane("notice", 1.4, 0.9, -43.4, 1.6, -8.5, { rotY: Math.PI / 2 });
+    for (const x of [-42.8, -37.6]) {
+      this.builder.box("woodDark", { w: 1.0, h: 0.95, d: 3.4 }, x, 0.48, 7.8, {});
+      this.builder.box("woodLight", { w: 0.92, h: 0.06, d: 3.25 }, x, 0.98, 7.8, {});
+    }
+    this.builder.box("paper", { w: 2.4, h: 0.04, d: 1.2 }, -40.2, 1.0, 7.8, {});
+    this.builder.plane("chalk", 2.6, 1.3, -40.2, 2.0, 10.3, { rotY: Math.PI });
+
+    // Staff room, first floor south-east.
+    this.builder.box("woodLight", { w: 3.6, h: 0.08, d: 1.2 }, -21.5, floorY + 0.78, 6.0, {});
+    for (const x of [-23.0, -21.5, -20.0]) {
+      this.builder.box("woodDark", { w: 0.42, h: 0.42, d: 0.42 }, x, floorY + 0.22, 5.0, {});
+      this.builder.box("woodDark", { w: 0.42, h: 0.42, d: 0.42 }, x, floorY + 0.22, 7.0, {});
+    }
+    this.builder.box("metal", { w: 1.9, h: 2.15, d: 0.55 }, -17.1, floorY + 1.08, 7.5, {});
+    this.builder.plane("notice", 1.8, 1.1, -17.0, floorY + 1.7, 4.2, { rotY: -Math.PI / 2 });
+    this.builder.plane("chalk", 3.2, 1.4, -21.5, floorY + 2.0, 10.34, { rotY: Math.PI });
+
+    this.addInteriorLightAt(-31, 2.9, 0, 7);
+    this.addInteriorLightAt(-21, 2.9, 0, 7);
+    this.addInteriorLightAt(-31, 6.35, 0, 6);
+    this.addInteriorLightAt(-21, 6.35, 0, 6);
+
+    // Door leaves and their interaction points.
+    const mainDoor = this.createDoor({
+      hinge: new THREE.Vector3(x2, 0, -1.2),
+      width: 2.4,
+      height: 2.8,
+      openAngle: -1.5,
+      label: "classroom",
+      opening: "Enter Academic Block A",
+      closing: "Close the academic block door",
+    });
+    mainDoor.collider = this.collider(-16.3, -15.7, -1.2, 1.2, "classroom-door");
+    this.interactables.push({
+      id: "classroom-door",
+      kind: "door",
+      label: "Academic Block A",
+      position: new THREE.Vector3(-14.7, 0, 0),
+      radius: 2.5,
+      door: mainDoor,
+      roomId: "academic-corridor-gf",
+    });
+
+    const balconyDoor = this.createDoor({
+      hinge: new THREE.Vector3(x2, floorY, -1.1),
+      width: 2.2,
+      height: 2.45,
+      openAngle: 1.4,
+      label: "academic-balcony",
+      opening: "Step onto the first-floor balcony",
+      closing: "Close the balcony door",
+    });
+    balconyDoor.collider = this.collider(-16.3, -15.7, -1.1, 1.1, "academic-balcony-door", floorY, floorY + 2.5);
+    this.interactables.push({
+      id: "academic-balcony-door",
+      kind: "door",
+      label: "First-floor balcony",
+      position: new THREE.Vector3(-17.1, floorY, 0),
+      radius: 2.3,
+      door: balconyDoor,
+      roomId: "academic-corridor-ff",
+    });
+
+    const washDoor = this.createDoor({
+      hinge: new THREE.Vector3(-41, 0, -5),
+      width: 1.6,
+      height: 2.2,
+      openAngle: 1.35,
+      baseRotationY: Math.PI / 2,
+      label: "academic-washroom",
+      opening: "Open the washroom",
+      closing: "Close the washroom door",
+    });
+    washDoor.collider = this.collider(-41, -39.4, -5.2, -4.8, "academic-washroom-door");
+    this.interactables.push({
+      id: "academic-washroom-door",
+      kind: "door",
+      label: "Washroom",
+      position: new THREE.Vector3(-40.2, 0, -4.2),
+      radius: 2.2,
+      door: washDoor,
+      roomId: "academic-washroom",
+    });
+
+    const storeDoor = this.createDoor({
+      hinge: new THREE.Vector3(stairX, 0, 7),
+      width: 1.5,
+      height: 2.2,
+      openAngle: 1.35,
+      label: "academic-activity-store",
+      opening: "Open the activity store",
+      closing: "Close the activity store door",
+    });
+    storeDoor.collider = this.collider(-35.7, -35.3, 7, 8.5, "academic-store-door");
+    this.interactables.push({
+      id: "academic-store-door",
+      kind: "door",
+      label: "Activity store",
+      position: new THREE.Vector3(-34.6, 0, 7.75),
+      radius: 2.1,
+      door: storeDoor,
+      roomId: "academic-activity-store",
+    });
+
+    this.interactables.push({
+      id: "academic-notice",
+      kind: "notice",
+      label: "the classroom notice board",
+      position: new THREE.Vector3(-29.0, 0, -3.0),
+      radius: 2.4,
+      notice: INTERIOR_CONTENT.classroomNotice,
+      roomId: "academic-classroom-101",
+    });
+
+    // Room number signs sit beside the corridor doors.
+    this.sign("signRoom101", 2.2, 0.5, -31.3, 2.55, corridorNorth + 0.02, 0);
+    this.sign("signRoom102", 2.2, 0.5, -21.3, 2.55, corridorNorth + 0.02, 0);
+    this.sign("signRoom103", 2.2, 0.5, -31.3, 2.55, corridorSouth - 0.02, Math.PI);
+    this.sign("signWashroom", 2.2, 0.5, -40.2, 2.4, -4.82, 0);
+    this.sign("signRoom201", 2.2, 0.5, -31.3, floorY + 2.55, corridorNorth + 0.02, 0);
+    this.sign("signRoom202", 2.2, 0.5, -21.3, floorY + 2.55, corridorNorth + 0.02, 0);
+    this.sign("signStaff", 2.4, 0.5, -21.3, floorY + 2.55, corridorSouth - 0.02, Math.PI);
   }
 
   private buildHostel(): void {
@@ -2084,6 +2580,241 @@ export class WorldEnvironment {
     });
   }
 
+  /**
+   * Academic Block B: a single-storey practical wing with a walk-in computer
+   * laboratory, classroom, activity room and staff room around a central
+   * corridor. It occupies the empty service strip east of the assembly ground.
+   */
+  private buildAcademicBlockB(): void {
+    const x1 = 24;
+    const x2 = 44;
+    const z1 = -29;
+    const z2 = -14;
+    const innerX1 = x1 + 0.4;
+    const innerX2 = x2 - 0.4;
+    const innerZ1 = z1 + 0.4;
+    const innerZ2 = z2 - 0.4;
+    const wallH = 3.6;
+
+    this.builder.box("stonePlaza", { w: 20.8, h: 0.06, d: 15.8 }, 34, 0.03, -21.5, {});
+    this.addPath(18.5, -16.5, 24.5, -20.6, 2.4);
+    this.addPath(8, -26, 18.5, -16.5, 2.2);
+
+    this.wallLevelX(z1, x1, x2, 0, 5.6, "plasterCool", "block-b");
+    this.wallLevelX(z2, x1, x2, 0, 5.6, "plasterCool", "block-b");
+    this.wallLevelZ(x2, z1, z2, 0, 5.6, "plasterCool", "block-b");
+    this.wallLevelZ(x1, z1, z2, 0, 5.6, "plasterCool", "block-b", [[-21.2, -19.2]]);
+    this.builder.box("plasterCool", { w: 0.4, h: 0.9, d: 2.0 }, x1, 3.15, -20.2, {});
+    this.builder.box("roof", { w: 21.2, h: 0.3, d: 16.2 }, 34, 5.75, -21.5, {});
+    this.builder.box("plinth", { w: 21.5, h: 0.55, d: 16.5 }, 34, 6.18, -21.5, {});
+    this.builder.box("stonePlaza", { w: 4.4, h: 0.05, d: 3.4 }, 21.8, 0.03, -20.2, {});
+
+    // Corridor with room partitions and clear door gaps.
+    this.wallLevelX(-22, x1, x2, 0, wallH, "plasterWarm", "block-b-corridor", [[29, 31], [38, 40]]);
+    this.wallLevelX(-19, x1, x2, 0, wallH, "plasterWarm", "block-b-corridor", [[29, 31], [38, 40]]);
+    this.wallLevelZ(34.5, z1, -22, 0, wallH, "plasterWarm", "block-b-partition");
+    this.wallLevelZ(34.5, -19, z2, 0, wallH, "plasterWarm", "block-b-partition");
+    this.builder.box("plasterCool", { w: 19.2, h: 0.18, d: 14.2 }, 34, 3.55, -21.5, {});
+
+    // Windows on all four facades.
+    for (const zSide of [z1, z2]) {
+      for (let index = 0; index < 4; index += 1) {
+        const x = 27 + index * 4.4;
+        this.builder.box("whitePaint", { w: 2.1, h: 1.8, d: 0.16 }, x, 2.0, zSide + (zSide < 0 ? 0.14 : -0.14), {});
+        this.builder.box("glass", { w: 1.8, h: 1.55, d: 0.1 }, x, 2.0, zSide + (zSide < 0 ? 0.26 : -0.26), {});
+      }
+    }
+    for (let index = 0; index < 3; index += 1) {
+      const z = -27 + index * 5.0;
+      this.builder.box("whitePaint", { w: 0.16, h: 1.8, d: 2.0 }, x2 - 0.14, 2.0, z, {});
+      this.builder.box("glass", { w: 0.1, h: 1.55, d: 1.7 }, x2 - 0.26, 2.0, z, {});
+    }
+    this.sign("signBlockB", 5.4, 1.15, x1 - 0.03, 4.35, -20.2, -Math.PI / 2);
+
+    // Computer laboratory: desks, monitors, keyboards and a wall board.
+    this.builder.plane("chalk", 5.0, 1.9, 29.5, 2.0, -28.25, { rotY: 0 });
+    this.builder.box("woodDark", { w: 5.2, h: 2.1, d: 0.08 }, 29.5, 2.0, -28.3, {});
+    for (let row = 0; row < 3; row += 1) {
+      for (let col = 0; col < 3; col += 1) {
+        const x = 26.6 + col * 2.55;
+        const z = -26.9 + row * 1.45;
+        this.builder.box("woodLight", { w: 2.0, h: 0.07, d: 1.05 }, x, 0.76, z, {});
+        this.builder.box("metal", { w: 0.12, h: 0.72, d: 0.12 }, x - 0.85, 0.38, z - 0.4, {});
+        this.builder.box("metal", { w: 0.12, h: 0.72, d: 0.12 }, x + 0.85, 0.38, z - 0.4, {});
+        this.builder.box("darkTrim", { w: 0.62, h: 0.42, d: 0.08 }, x, 1.12, z + 0.08, {});
+        this.builder.box("glass", { w: 0.56, h: 0.34, d: 0.03 }, x, 1.13, z + 0.025, {});
+        this.builder.box("metal", { w: 0.62, h: 0.05, d: 0.24 }, x, 0.79, z + 0.35, {});
+        this.builder.box("woodDark", { w: 0.42, h: 0.42, d: 0.42 }, x, 0.22, z - 0.85, {});
+        this.collider(x - 1.0, x + 1.0, z - 0.55, z + 0.55, "block-b-computer-desk");
+      }
+    }
+    this.builder.box("metal", { w: 1.3, h: 1.9, d: 0.7 }, 42.1, 0.95, -26.9, {});
+    this.builder.plane("notice", 2.2, 1.4, 33.0, 1.8, -21.78, { rotY: 0 });
+
+    // Classroom across the north corridor.
+    this.builder.plane("chalk", 3.9, 1.8, 39.2, 2.0, -28.25, { rotY: 0 });
+    this.builder.box("woodDark", { w: 4.1, h: 2.0, d: 0.08 }, 39.2, 2.0, -28.3, {});
+    for (let row = 0; row < 2; row += 1) {
+      for (let col = 0; col < 2; col += 1) {
+        const x = 37.2 + col * 3.4;
+        const z = -26.6 + row * 2.5;
+        this.builder.box("woodLight", { w: 1.5, h: 0.07, d: 0.7 }, x, 0.76, z, {});
+        this.builder.box("woodDark", { w: 0.45, h: 0.42, d: 1.2 }, x + 1.25, 0.24, z, {});
+      }
+    }
+
+    // Practical activity room and staff room on the south side.
+    this.builder.box("cement", { w: 6.6, h: 0.84, d: 2.2 }, 29.5, 0.42, -16.1, {});
+    this.builder.box("darkTrim", { w: 6.8, h: 0.06, d: 2.3 }, 29.5, 0.87, -16.1, {});
+    for (let index = 0; index < 4; index += 1) {
+      this.builder.cylinder("woodLight", 0.17, 0.17, 0.06, 10, 27.2 + index * 1.6, 0.55, -17.7, {});
+      this.builder.cylinder("metal", 0.04, 0.04, 0.52, 6, 27.2 + index * 1.6, 0.26, -17.7, {});
+    }
+    this.builder.box("woodDark", { w: 4.2, h: 0.8, d: 0.7 }, 29.5, 1.55, -28.1, {});
+    this.builder.plane("notice", 2.3, 1.5, 34.1, 1.8, -14.24, { rotY: Math.PI });
+
+    this.builder.box("woodLight", { w: 3.2, h: 0.08, d: 1.1 }, 39.2, 0.78, -16.3, {});
+    for (const x of [37.8, 39.2, 40.6]) {
+      this.builder.box("woodDark", { w: 0.42, h: 0.42, d: 0.42 }, x, 0.22, -17.2, {});
+      this.builder.box("woodDark", { w: 0.42, h: 0.42, d: 0.42 }, x, 0.22, -15.4, {});
+    }
+    this.builder.box("metal", { w: 2.0, h: 2.15, d: 0.55 }, 42.4, 1.08, -15.6, {});
+
+    this.addInteriorLight(29, -25, 7);
+    this.addInteriorLight(39, -25, 7);
+    this.addInteriorLight(29, -17, 7);
+    this.addInteriorLight(39, -17, 7);
+
+    const door = this.createDoor({
+      hinge: new THREE.Vector3(x1, 0, -21.2),
+      width: 2.0,
+      height: 2.7,
+      openAngle: 1.4,
+      label: "block-b",
+      opening: "Enter Academic Block B",
+      closing: "Close the Academic Block B door",
+    });
+    door.collider = this.collider(x1 - 0.3, x1 + 0.3, -21.2, -19.2, "block-b-door");
+    this.interactables.push({
+      id: "block-b-door",
+      kind: "door",
+      label: "Academic Block B",
+      position: new THREE.Vector3(22.6, 0, -20.2),
+      radius: 2.4,
+      door,
+      roomId: "block-b-corridor",
+    });
+    this.interactables.push({
+      id: "computer-lab-notice",
+      kind: "notice",
+      label: "the computer lab rota",
+      position: new THREE.Vector3(33.0, 0, -23.2),
+      radius: 2.4,
+      notice: INTERIOR_CONTENT.computerLab,
+      roomId: "computer-lab",
+    });
+    this.sign("signComputer", 2.8, 0.55, 31.0, 2.5, -21.98, 0);
+  }
+
+  /** Indoor badminton/table-tennis hall, with its own equipment store. */
+  private buildIndoorSportsHall(): void {
+    const x1 = 44.5;
+    const x2 = 54;
+    const z1 = -28;
+    const z2 = -11;
+    const wallH = 6.4;
+    this.builder.box("stonePlaza", { w: 10.4, h: 0.06, d: 17.8 }, 49.25, 0.03, -19.5, {});
+    this.wallLevelX(z1, x1, x2, 0, wallH, "plasterWarm", "indoor-sports");
+    this.wallLevelX(z2, x1, x2, 0, wallH, "plasterWarm", "indoor-sports", [[48.3, 50.3]]);
+    this.wallLevelZ(x1, z1, z2, 0, wallH, "plasterWarm", "indoor-sports");
+    this.wallLevelZ(x2, z1, z2, 0, wallH, "plasterWarm", "indoor-sports");
+    this.builder.box("plasterWarm", { w: 2.0, h: 3.7, d: 0.36 }, 49.3, 4.55, z2, {});
+    this.builder.box("roof", { w: 10.8, h: 0.3, d: 18.2 }, 49.25, wallH + 0.15, -19.5, {});
+    this.builder.box("plinth", { w: 11.1, h: 0.5, d: 18.5 }, 49.25, wallH + 0.55, -19.5, {});
+    this.builder.box("stonePlaza", { w: 4.2, h: 0.05, d: 3.0 }, 49.3, 0.03, -9.8, {});
+    this.sign("signIndoorSports", 5.6, 1.1, 49.3, 5.6, z2 + 0.19, 0);
+
+    // High windows and roof trusses give the hall a real indoor volume.
+    for (let index = 0; index < 5; index += 1) {
+      const z = -26 + index * 3.2;
+      for (const xSide of [x1, x2]) {
+        this.builder.box("glass", { w: 0.1, h: 1.5, d: 2.15 }, xSide + (xSide < 49 ? 0.14 : -0.14), 5.0, z, {});
+        this.builder.box("whitePaint", { w: 0.16, h: 1.7, d: 2.35 }, xSide + (xSide < 49 ? 0.08 : -0.08), 5.0, z, {});
+      }
+    }
+    for (let index = 0; index < 6; index += 1) {
+      const z = -27 + index * 3.0;
+      this.builder.box("metal", { w: 9.4, h: 0.08, d: 0.08 }, 49.25, 6.1, z, {});
+      this.builder.box("metal", { w: 0.08, h: 0.5, d: 0.08 }, 45.0, 5.85, z, {});
+      this.builder.box("metal", { w: 0.08, h: 0.5, d: 0.08 }, 53.5, 5.85, z, {});
+    }
+
+    // Badminton court markings and net posts.
+    this.builder.box("woodLight", { w: 7.0, h: 0.04, d: 12.0 }, 49.3, 0.08, -18.6, {});
+    for (const x of [46.2, 52.4]) {
+      this.builder.box("whitePaint", { w: 0.07, h: 0.02, d: 12.0 }, x, 0.11, -18.6, {});
+    }
+    for (const z of [-24.6, -18.6, -12.6]) {
+      this.builder.box("whitePaint", { w: 6.2, h: 0.02, d: 0.07 }, 49.3, 0.11, z, {});
+    }
+    for (const x of [46.2, 52.4]) {
+      this.builder.cylinder("metal", 0.055, 0.07, 1.7, 8, x, 0.85, -18.6, {});
+      this.builder.box("whitePaint", { w: 0.04, h: 0.9, d: 6.2 }, x, 1.35, -18.6, {});
+      this.collider(x - 0.1, x + 0.1, -18.7, -18.5, "badminton-post");
+    }
+
+    // Equipment room at the north end, with a counter and shelving.
+    this.wallLevelX(-24.6, x1, 49.4, 0, 2.8, "woodDark", "indoor-store", [[46.7, 48.5]]);
+    this.wallLevelZ(49.4, z1, -24.6, 0, 2.8, "woodDark", "indoor-store");
+    this.builder.box("woodDark", { w: 4.5, h: 0.1, d: 2.6 }, 47.0, 2.75, -26.3, {});
+    for (let index = 0; index < 5; index += 1) {
+      this.builder.box("woodDark", { w: 0.12, h: 1.9, d: 0.55 }, 47.2 + index * 0.5, 0.95, -26.8, {});
+    }
+    this.builder.box("woodLight", { w: 3.0, h: 0.08, d: 0.8 }, 47.6, 1.0, -25.1, {});
+    this.builder.box("paper", { w: 0.7, h: 0.04, d: 0.45 }, 47.2, 1.06, -25.1, {});
+
+    // Table-tennis table along the east wall.
+    this.builder.box("darkTrim", { w: 1.5, h: 0.07, d: 2.7 }, 52.5, 0.76, -14.8, {});
+    this.builder.box("metal", { w: 0.08, h: 0.74, d: 0.08 }, 51.95, 0.37, -13.8, {});
+    this.builder.box("metal", { w: 0.08, h: 0.74, d: 0.08 }, 53.05, 0.37, -13.8, {});
+    this.builder.box("metal", { w: 0.08, h: 0.74, d: 0.08 }, 51.95, 0.37, -15.8, {});
+    this.builder.box("metal", { w: 0.08, h: 0.74, d: 0.08 }, 53.05, 0.37, -15.8, {});
+    this.builder.box("whitePaint", { w: 0.02, h: 0.16, d: 2.8 }, 52.5, 0.87, -14.8, {});
+
+    this.addInteriorLight(49.3, -22, 8);
+    this.addInteriorLight(49.3, -15, 8);
+
+    const door = this.createDoor({
+      hinge: new THREE.Vector3(48.3, 0, z2),
+      width: 2.0,
+      height: 2.7,
+      openAngle: 1.35,
+      baseRotationY: Math.PI,
+      label: "indoor-sports",
+      opening: "Enter the indoor sports hall",
+      closing: "Close the indoor sports hall door",
+    });
+    door.collider = this.collider(48.3, 50.3, z2 - 0.18, z2 + 0.18, "indoor-sports-door");
+    this.interactables.push({
+      id: "indoor-sports-door",
+      kind: "door",
+      label: "Indoor sports hall",
+      position: new THREE.Vector3(49.3, 0, -10.5),
+      radius: 2.5,
+      door,
+      roomId: "indoor-sports-hall",
+    });
+    this.interactables.push({
+      id: "indoor-sports-notice",
+      kind: "notice",
+      label: "the indoor games board",
+      position: new THREE.Vector3(48.0, 0, -25.3),
+      radius: 2.3,
+      notice: INTERIOR_CONTENT.indoorSports,
+      roomId: "indoor-sports-hall",
+    });
+  }
+
   private buildSportsGround(): void {
     const cx = 37;
     const cz = 36;
@@ -2358,6 +3089,22 @@ export class WorldEnvironment {
   }
 
   private buildGardensAndTrees(): void {
+    // Interiors are open volumes now, so keep the scattered trees out of every
+    // building footprint rather than only away from its exterior colliders.
+    this.treeExclusions.push(
+      { minX: -45, maxX: -15, minZ: -14, maxZ: 12 },
+      { minX: 23, maxX: 45, minZ: -30, maxZ: -13 },
+      { minX: 43, maxX: 55, minZ: -29, maxZ: -10 },
+      { minX: 7, maxX: 19, minZ: 39, maxZ: 48 },
+      { minX: -14.5, maxX: 18.5, minZ: -45, maxZ: -31 },
+      { minX: -45.5, maxX: -26.5, minZ: -38, maxZ: -22 },
+      { minX: 28, maxX: 44, minZ: -44, maxZ: -32 },
+      { minX: 15.5, maxX: 44.5, minZ: -6.5, maxZ: 22.5 },
+      { minX: -13, maxX: -8, minZ: 42.5, maxZ: 46.5 },
+      { minX: -49, maxX: -16, minZ: 34, maxZ: 42 },
+      { minX: 18, maxX: 26, minZ: -44, maxZ: -36 },
+      { minX: 45, maxX: 51, minZ: 14, maxZ: 18 },
+    );
     const rand = seededRandom(2024);
     const spots: Array<{ x: number; z: number; scale: number }> = [];
     let attempts = 0;
@@ -2556,18 +3303,7 @@ export class WorldEnvironment {
   }
 
   private buildInteractables(): void {
-    const classroomDoor = this.doors.find((door) => door.label === "classroom");
     const hostelDoor = this.doors.find((door) => door.label === "hostel");
-    if (classroomDoor) {
-      this.interactables.push({
-        id: "classroom-door",
-        kind: "door",
-        label: "Classroom",
-        position: new THREE.Vector3(-15.1, 0, 0),
-        radius: 2.6,
-        door: classroomDoor,
-      });
-    }
     if (hostelDoor) {
       this.interactables.push({
         id: "hostel-door",

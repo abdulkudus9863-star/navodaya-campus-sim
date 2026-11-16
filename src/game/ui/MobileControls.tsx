@@ -1,4 +1,4 @@
-import { ArrowUp, Footprints, Hand } from "lucide-react";
+import { ArrowUp, Footprints, Hand, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { GameEngine } from "../core/GameEngine";
@@ -15,13 +15,20 @@ export function MobileControls({
   const baseRef = useRef<HTMLDivElement>(null);
   const joystickPointer = useRef<number | null>(null);
   const [stick, setStick] = useState({ x: 0, y: 0, active: false });
+  const [runHeld, setRunHeld] = useState(false);
   const lookPointers = useRef(new Map<number, { x: number; y: number }>());
 
   useEffect(() => {
     return () => {
       engine?.setJoystick(0, 0);
+      engine?.setTouchRunning(false);
     };
   }, [engine]);
+
+  const setRun = (running: boolean) => {
+    setRunHeld(running);
+    engine?.setTouchRunning(running);
+  };
 
   const updateStick = (event: ReactPointerEvent<HTMLDivElement>) => {
     const base = baseRef.current;
@@ -93,7 +100,7 @@ export function MobileControls({
         onLostPointerCapture={handleLookEnd}
       />
 
-      <div className="absolute inset-x-0 bottom-0 z-30 flex items-end justify-between px-5 pb-6 sm:px-8 pointer-events-none">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex items-end justify-between gap-3 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:px-8">
         <div
           ref={baseRef}
           role="group"
@@ -122,7 +129,32 @@ export function MobileControls({
           <span className="absolute -top-6 left-0 label-cinema text-[9px] text-foreground/45">Move</span>
         </div>
 
-        <div className="pointer-events-auto flex items-end gap-2 sm:gap-3">
+        <div className="pointer-events-auto grid shrink-0 grid-cols-2 items-end gap-2 sm:gap-2.5">
+          <button
+            type="button"
+            aria-label="Run"
+            aria-pressed={runHeld}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              setRun(true);
+            }}
+            onPointerUp={(event) => {
+              event.preventDefault();
+              setRun(false);
+            }}
+            onPointerCancel={() => setRun(false)}
+            onLostPointerCapture={() => setRun(false)}
+            className={`flex size-[46px] touch-none flex-col items-center justify-center gap-0.5 rounded-full border backdrop-blur-sm transition active:scale-95 ${
+              runHeld
+                ? "border-[#e9c17c]/85 bg-[#d9b877]/30 text-[#ffe9bd] shadow-[0_0_22px_rgba(217,184,119,0.3)]"
+                : "border-[#e7d3a8]/25 bg-black/35 text-foreground/65"
+            }`}
+          >
+            <Zap className="size-4" strokeWidth={1.7} />
+            <span className="label-cinema text-[6px]">Run</span>
+          </button>
           <button
             type="button"
             aria-label="Crouch"
@@ -132,14 +164,14 @@ export function MobileControls({
               event.stopPropagation();
               engine?.toggleCrouch();
             }}
-            className={`flex size-[52px] flex-col items-center justify-center gap-1 rounded-full border backdrop-blur-sm transition active:scale-95 ${
+            className={`flex size-[46px] touch-none flex-col items-center justify-center gap-0.5 rounded-full border backdrop-blur-sm transition active:scale-95 ${
               crouching
                 ? "border-[#9fc5a8]/80 bg-[#5f9b6e]/25 text-[#d7f0da]"
                 : "border-[#e7d3a8]/22 bg-black/35 text-foreground/55"
             }`}
           >
             <Footprints className="size-4" strokeWidth={1.6} />
-            <span className="label-cinema text-[7px]">Crouch</span>
+            <span className="label-cinema text-[6px]">Crouch</span>
           </button>
           <button
             type="button"
@@ -149,10 +181,10 @@ export function MobileControls({
               event.stopPropagation();
               engine?.jump();
             }}
-            className="flex size-[58px] flex-col items-center justify-center gap-1 rounded-full border border-[#e7d3a8]/30 bg-black/40 text-foreground/80 backdrop-blur-sm transition active:scale-95 active:border-[#e7c98f] active:text-[#f0ddb4]"
+            className="flex size-[56px] touch-none flex-col items-center justify-center gap-0.5 rounded-full border border-[#e7d3a8]/30 bg-black/40 text-foreground/80 backdrop-blur-sm transition active:scale-95 active:border-[#e7c98f] active:text-[#f0ddb4]"
           >
             <ArrowUp className="size-5" strokeWidth={1.6} />
-            <span className="label-cinema text-[7px]">Jump</span>
+            <span className="label-cinema text-[6px]">Jump</span>
           </button>
           <button
             type="button"
@@ -163,14 +195,14 @@ export function MobileControls({
               event.stopPropagation();
               engine?.interact();
             }}
-            className={`flex size-[72px] flex-col items-center justify-center gap-1 rounded-full border backdrop-blur-sm transition active:scale-95 ${
+            className={`flex size-[68px] touch-none flex-col items-center justify-center gap-0.5 rounded-full border backdrop-blur-sm transition active:scale-95 ${
               promptActive
                 ? "border-[#e7c98f]/80 bg-[#d9b877]/25 text-[#f6e6c4] shadow-[0_0_32px_rgba(217,184,119,0.35)]"
                 : "border-[#e7d3a8]/20 bg-black/30 text-foreground/35"
             }`}
           >
             <Hand className="size-5" strokeWidth={1.6} />
-            <span className="label-cinema text-[7px]">Interact</span>
+            <span className="label-cinema text-[6px]">Interact</span>
           </button>
         </div>
       </div>

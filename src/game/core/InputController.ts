@@ -9,6 +9,7 @@ export class InputController {
   private joystick = { x: 0, y: 0 };
   private jumpQueued = false;
   private interactQueued = false;
+  private touchRunning = false;
   private enabled = true;
   private element: HTMLElement | null = null;
   private dragging = false;
@@ -56,6 +57,7 @@ export class InputController {
       this.joystick.y = 0;
       this.jumpQueued = false;
       this.interactQueued = false;
+      this.touchRunning = false;
       this.lookX = 0;
       this.lookY = 0;
       if (document.pointerLockElement) document.exitPointerLock();
@@ -70,6 +72,15 @@ export class InputController {
     this.joystick.y = 0;
     this.jumpQueued = false;
     this.interactQueued = false;
+    this.touchRunning = false;
+  }
+
+  setTouchRunning(running: boolean): void {
+    if (!this.enabled) {
+      this.touchRunning = false;
+      return;
+    }
+    this.touchRunning = running;
   }
 
   requestPointerLock(): void {
@@ -149,7 +160,11 @@ export class InputController {
   }
 
   get running(): boolean {
-    return this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
+    return (
+      this.touchRunning ||
+      this.keys.has("ShiftLeft") ||
+      this.keys.has("ShiftRight")
+    );
   }
 
   get isMoving(): boolean {

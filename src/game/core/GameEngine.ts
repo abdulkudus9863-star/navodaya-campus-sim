@@ -1886,6 +1886,10 @@ export class GameEngine {
     this.input.addLook(dx, dy);
   }
 
+  setTouchRunning(running: boolean): void {
+    this.input.setTouchRunning(running);
+  }
+
   jump(): void {
     this.input.queueJump();
   }
@@ -2333,7 +2337,14 @@ export class GameEngine {
     if (simulating) {
       this.playtime += dt;
       if (this.input.consumeInteract()) this.interact();
-      this.player.update(dt, this.input, this.cameraController.yaw, this.world.colliders, this.world.bounds);
+      this.player.update(
+        dt,
+        this.input,
+        this.cameraController.yaw,
+        this.world.colliders,
+        this.world.bounds,
+        this.world.walkHeightAt,
+      );
       this.cameraController.updateFollow(
         dt,
         this.player.position,

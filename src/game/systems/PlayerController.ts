@@ -13,9 +13,13 @@ const GRAVITY = 18;
 const JUMP_VELOCITY = 5.4;
 const PLAYER_RADIUS = 0.38;
 
-export function collidesAt(x: number, z: number, colliders: BlockCollider[]): boolean {
+export function collidesAt(x: number, z: number, colliders: BlockCollider[], y = 0): boolean {
   for (const collider of colliders) {
     if (!collider.active) continue;
+    // The player is a 1.7 m capsule. Vertical limits keep first-floor walls
+    // from blocking the ground-floor corridor below them, and vice versa.
+    if (collider.maxY !== undefined && collider.maxY <= y + 0.12) continue;
+    if (collider.minY !== undefined && collider.minY >= y + 1.7) continue;
     const closestX = Math.max(collider.minX, Math.min(x, collider.maxX));
     const closestZ = Math.max(collider.minZ, Math.min(z, collider.maxZ));
     const dx = x - closestX;
@@ -87,6 +91,7 @@ export class PlayerController {
     cameraYaw: number,
     colliders: BlockCollider[],
     bounds: number,
+    heightAt?: (x: number, z: number, currentY: number) => number,
   ): void {
     const move = input.getMove();
     const magnitude = Math.min(1, Math.hypot(move.x, move.y));
@@ -115,24 +120,40 @@ export class PlayerController {
       this.grounded = false;
     }
 
-    this.velocityY -= GRAVITY * dt;
-    this.position.y += this.velocityY * dt;
-    if (this.position.y <= 0) {
-      this.position.y = 0;
-      this.velocityY = 0;
-      this.grounded = true;
-    }
+    const groundAt = (x: number, z: number): number =>
+      heightAt ? heightAt(x, z, this.position.y) : 0;
 
     // Axis-separated movement gives natural wall sliding.
     const stepX = dirX * wantedSpeed * dt;
     const stepZ = dirZ * wantedSpeed * dt;
     if (stepX !== 0) {
       const nextX = THREE.MathUtils.clamp(this.position.x + stepX, -bounds, bounds);
-      if (!collidesAt(nextX, this.position.z, colliders)) this.position.x = nextX;
+      if (!collidesAt(nextX, this.position.z, colliders, this.position.y)) this.position.x = nextX;
     }
     if (stepZ !== 0) {
       const nextZ = THREE.MathUtils.clamp(this.position.z + stepZ, -bounds, bounds);
-      if (!collidesAt(this.position.x, nextZ, colliders)) this.position.z = nextZ;
+      if (!collidesAt(this.position.x, nextZ, colliders, this.position.y)) this.position.z = nextZ;
+    }
+
+    let groundY = groundAt(this.position.x, this.position.z);
+    if (this.grounded) {
+      // Stairs are ramps: follow small rises and descents. A larger drop
+      // becomes a fall instead of snapping the player through a floor.
+      if (groundY >= this.position.y - 0.55) {
+        this.position.y = groundY;
+        this.velocityY = 0;
+      } else {
+        this.grounded = false;
+      }
+    }
+
+    this.velocityY -= GRAVITY * dt;
+    this.position.y += this.velocityY * dt;
+    groundY = groundAt(this.position.x, this.position.z);
+    if (this.position.y <= groundY) {
+      this.position.y = groundY;
+      this.velocityY = 0;
+      this.grounded = true;
     }
 
     if (this.moving) {

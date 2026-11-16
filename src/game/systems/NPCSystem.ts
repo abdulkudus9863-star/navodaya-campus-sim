@@ -66,7 +66,7 @@ export class NPCSystem {
     } else if (context.step === 2) {
       this.add({
         id: "reminder",
-        text: "Academic block is on the west side. Room 12 — the classroom at the end of the veranda, beside the columns. The door sticks a little, push it.",
+        text: "Academic block is on the west side, under the Vidya Bhavan sign. Come in through the portico, then take the first door on your left — Room 101. The stairs at the far end go up to the senior rooms if you get lost.",
       });
       this.currentId = "reminder";
     } else {
