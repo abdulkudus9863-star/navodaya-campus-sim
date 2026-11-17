@@ -10,6 +10,7 @@ import {
   emptyNightSave,
   type CharacterSettings,
   type DialogueView,
+  type DisciplineView,
   type GameSettings,
   type GardenDutyView,
   type NightResultView,
@@ -24,6 +25,8 @@ import { MissionSystem } from "../systems/MissionSystem";
 import { NightMissionSystem } from "../systems/NightMissionSystem";
 import { ExplorationSystem } from "../systems/ExplorationSystem";
 import { NPCSystem } from "../systems/NPCSystem";
+import { TeacherSystem } from "../teachers/TeacherSystem";
+import { emptyTeacherSave, type TeacherId } from "../data/teachers";
 import { PlayerController, collidesAt } from "../systems/PlayerController";
 import { WorldEnvironment, type WorldZone } from "../world/WorldEnvironment";
 import { MultiplayerLayer } from "../world/MultiplayerLayer";
@@ -102,6 +105,7 @@ export class GameEngine {
   private input: InputController;
   private interaction: InteractionSystem;
   private npc = new NPCSystem();
+  private teachers: TeacherSystem | null = null;
   private mission = new MissionSystem();
   private night = new NightMissionSystem();
   private exploration = new ExplorationSystem();
@@ -115,8 +119,11 @@ export class GameEngine {
   private nightCaughtHandled = false;
   private suspicion = 0;
   private nightHudTimer = 0;
+  private disciplineHudTimer = 0;
   private crouching = false;
-  private dialogueSource: "meera" | "night" | "caught" | null = null;
+  private dialogueSource: "meera" | "night" | "caught" | "teacher" | null = null;
+  private teacherDialogueId: TeacherId | null = null;
+  private lastDiscipline: DisciplineView | null = null;
   private dialogueAnchor = new THREE.Vector3();
 
   private multiplayer: {
@@ -245,6 +252,9 @@ export class GameEngine {
       });
       if (this.disposed) return;
 
+      this.teachers = new TeacherSystem(this.world);
+      this.teachers.attach(this.scene);
+
       if (this.renderer) {
         try {
           await this.renderer.compileAsync(this.scene, this.cameraController.camera);
@@ -275,6 +285,7 @@ export class GameEngine {
         this.world.setPlayerCharacterId(saved.data.profile.characterId);
         this.mission.setHouseName(house?.shortName ?? "your house");
         this.exploration.restore(saved.data.exploration);
+        this.teachers?.reset(saved.data.teachers);
         this.refreshExploration();
       } else {
         this.store.patch({ hasSave: false });
@@ -289,6 +300,7 @@ export class GameEngine {
       this.store.setScreen("menu");
       this.store.setMission(this.mission.view());
       this.installDebugApi();
+      this.syncDisciplineHud(true);
       this.clock.start();
       this.raf = requestAnimationFrame(this.tick);
     } catch (error) {
@@ -320,6 +332,7 @@ export class GameEngine {
           step: engine.mission.stepIndex,
           done: engine.mission.done,
           prompt: state.prompt,
+          fps: state.fps,
           position: { x: engine.player.position.x, y: engine.player.position.y, z: engine.player.position.z },
           playerRotation: engine.player.rotationY,
           grounded: engine.player.grounded,
@@ -356,6 +369,7 @@ export class GameEngine {
                 remotes: engine.multiplayer.layer.snapshot(),
               }
             : null,
+          teachers: engine.teachers?.snapshot() ?? null,
           night: {
             mode: engine.nightMode,
             active: engine.night.active,
@@ -398,6 +412,9 @@ export class GameEngine {
           };
         },
       },
+      save() {
+        return engine.saveGame(false);
+      },
       choosePlan(choice: "explore" | "stealth" | "later") {
         return engine.choosePlan(choice);
       },
@@ -424,6 +441,77 @@ export class GameEngine {
       },
       worldState() {
         return engine.world.inspect();
+      },
+      teachers: {
+        snapshot() {
+          return engine.teachers?.snapshot() ?? null;
+        },
+        identity() {
+          return engine.teachers?.playerIdentity(engine.profile) ?? null;
+        },
+        clearCooldown(id: string) {
+          if (id !== "dinesh" && id !== "sushil" && id !== "rahul") return false;
+          engine.teachers?.clearCooldown(id);
+          return true;
+        },
+        simulatePatrol(seconds: number) {
+          return engine.teachers?.simulatePatrol(seconds) ?? null;
+        },
+        seedMemory(id: string, input: Record<string, unknown>) {
+          if (id !== "dinesh" && id !== "sushil" && id !== "rahul") return false;
+          engine.teachers?.seedMemory(id, input);
+          return true;
+        },
+        configure(id: string, patch: Record<string, unknown>) {
+          if (!engine.teachers || (id !== "dinesh" && id !== "sushil" && id !== "rahul")) {
+            return false;
+          }
+          return engine.teachers.configure(id, patch);
+        },
+        setPhase(phase: string | null) {
+          const allowed = [
+            "assembly",
+            "class",
+            "break",
+            "lunch",
+            "games",
+            "prep",
+            "dinner",
+            "hostel",
+          ];
+          if (phase !== null && !allowed.includes(phase)) return false;
+          engine.teachers?.setTimetablePhase(phase as Parameters<TeacherSystem["setTimetablePhase"]>[0]);
+          return true;
+        },
+        teleport(id: string) {
+          const controller = engine.teachers?.teacher(id as TeacherId);
+          if (!controller || !engine.teachers) return false;
+          const offset = 2.45;
+          const x = controller.position.x + Math.sin(controller.rotation) * offset;
+          const z = controller.position.z + Math.cos(controller.rotation) * offset;
+          engine.player.placeAt(new THREE.Vector3(x, 0, z), controller.rotation + Math.PI);
+          engine.cameraController.resetToPlayer(engine.player.position, engine.player.rotationY);
+          return true;
+        },
+        talk(id: string) {
+          if (!engine.teachers) return false;
+          const teacherId = id as TeacherId;
+          if (!engine.teachers.teacher(teacherId)) return false;
+          engine.openTeacherDialogue(teacherId);
+          return engine.store.getState().screen === "dialogue";
+        },
+        choose(index: number) {
+          engine.chooseDialogue(index);
+          return engine.store.getState().dialogue;
+        },
+        advance() {
+          engine.advanceDialogue();
+          return engine.store.getState().dialogue;
+        },
+        close() {
+          engine.closeDialogue();
+          return engine.store.getState().screen;
+        },
       },
       roster() {
         return {
@@ -466,6 +554,8 @@ export class GameEngine {
     this.nightCaughtHandled = false;
     this.suspicion = 0;
     this.escapeData = null;
+    this.teachers?.reset();
+    this.syncDisciplineHud(true);
     this.setCrouching(false);
     this.store.patch({
       screen: "creation",
@@ -600,6 +690,8 @@ export class GameEngine {
     this.playtime = data.playtime;
     this.night.restore(data.night);
     this.exploration.restore(data.exploration);
+    this.teachers?.reset(data.teachers);
+    this.syncDisciplineHud(true);
     this.cancelGardenDuty(false);
     this.nightCaughtHandled = false;
     this.suspicion = 0;
@@ -625,6 +717,7 @@ export class GameEngine {
       nightResult: null,
       gardenDuty: null,
       exploration: this.explorationView(),
+      discipline: this.teachers?.disciplineView() ?? null,
       planOpen: false,
       campusMapOpen: false,
       campusMap: null,
@@ -1483,6 +1576,7 @@ export class GameEngine {
       night: this.night.toSave(),
       exploration: this.exploration.toSave(),
       escape: this.escapeData ?? emptyEscapeSave(this.profile.playerId),
+      teachers: this.teachers?.toSave() ?? emptyTeacherSave(),
     };
     const ok = this.saveSystem.save(data);
     if (ok) {
@@ -1502,6 +1596,8 @@ export class GameEngine {
     this.exploration.reset();
     this.profile = null;
     this.escapeData = null;
+    this.teachers?.reset();
+    this.lastDiscipline = null;
     this.nightMode = false;
     this.cancelGardenDuty(false);
     this.nightCaughtHandled = false;
@@ -1814,6 +1910,14 @@ export class GameEngine {
     }
     const target = this.interaction.target;
     if (!target) return;
+    if (target.kind === "teacher") {
+      const teacherId = this.teachers?.teacherForInteractable(target.id);
+      if (teacherId) this.openTeacherDialogue(teacherId);
+      return;
+    }
+    if (target.kind === "student") {
+      return;
+    }
     if (target.kind === "npc") {
       this.openDialogue();
       return;
@@ -1878,6 +1982,16 @@ export class GameEngine {
 
   advanceDialogue(): void {
     if (this.store.getState().screen !== "dialogue") return;
+    if (this.dialogueSource === "teacher") {
+      const ended = this.teachers?.advance() ?? true;
+      if (ended) {
+        this.finishTeacherDialogue();
+      } else if (this.teachers) {
+        this.store.setDialogue(this.teachers.currentDialogueView());
+        this.audio.uiClick();
+      }
+      return;
+    }
     if (this.dialogueSource === "night" || this.dialogueSource === "caught") {
       const ended = this.night.advanceDialogue();
       if (ended) {
@@ -1900,6 +2014,26 @@ export class GameEngine {
 
   chooseDialogue(index: number): void {
     if (this.store.getState().screen !== "dialogue") return;
+    if (this.dialogueSource === "teacher") {
+      const result = this.teachers?.choose(index);
+      if (!result) return;
+      if (result.ended) {
+        this.syncDisciplineHud(true);
+        if (result.disciplineStarted) {
+          this.showToast("Discipline task assigned. Report to your house hostel before the timer ends.");
+        }
+        this.finishTeacherDialogue();
+        return;
+      }
+      this.store.setDialogue(result.view);
+      this.audio.uiClick();
+      if (result.warning) this.audio.chime();
+      this.syncDisciplineHud(true);
+      if (result.disciplineStarted) {
+        this.showToast("Discipline task assigned. Report to your house hostel before the timer ends.");
+      }
+      return;
+    }
     if (this.dialogueSource === "night") {
       if (this.night.chooseDialogue(index)) {
         this.store.setDialogue(this.night.currentView());
@@ -1976,6 +2110,8 @@ export class GameEngine {
     this.multiplayer?.layer.dispose();
     this.multiplayer = null;
     this.player.dispose();
+    this.teachers?.dispose();
+    this.teachers = null;
     this.world.dispose();
     this.removeDebugApi();
     this.scene.clear();
@@ -2100,6 +2236,111 @@ export class GameEngine {
       this.nightHudTimer = 0;
       this.syncNightHud();
     }
+  }
+
+  private teacherContext(mode: "playing" | "dialogue" | "frozen") {
+    const hostel = this.profile ? this.world.houseHostels[this.profile.houseId] : null;
+    return {
+      profile: this.profile,
+      player: this.player.position,
+      playtime: this.playtime,
+      houseHostel: hostel ? { x: hostel.center.x, z: hostel.center.z } : null,
+      insideHouseHostel: this.profile
+        ? this.world.isInsideHouseHostel(this.profile.houseId, this.player.position)
+        : false,
+      mode,
+      crouching: this.crouching,
+    };
+  }
+
+  private syncDisciplineHud(force = false): void {
+    if (!this.teachers) return;
+    const view = this.teachers.disciplineView();
+    const signature = view ? `${view.teacherName}:${view.secondsLeft}` : null;
+    const previous = this.lastDiscipline ? `${this.lastDiscipline.teacherName}:${this.lastDiscipline.secondsLeft}` : null;
+    if (force || signature !== previous) {
+      this.lastDiscipline = view;
+      this.store.patch({ discipline: view });
+    }
+    if (this.teachers.consumeDisciplineAssignment()) {
+      this.showToast("Discipline task assigned. Report to your house hostel before the timer ends.");
+    }
+    const resolution = this.teachers.consumeDisciplineResolution();
+    if (resolution === "completed") {
+      this.lastDiscipline = null;
+      this.store.patch({ discipline: null });
+      this.showToast("House hostel check complete. Your conduct has been noted positively.");
+    } else if (resolution === "missed") {
+      this.showToast("The hostel check was missed. Your conduct record now shows another warning.");
+    }
+  }
+
+  private openTeacherDialogue(id: TeacherId): void {
+    if (!this.teachers || !this.profile) return;
+    const time = Math.floor(this.playtime);
+    const hostel = this.world.houseHostels[this.profile.houseId];
+    const view = this.teachers.startConversation(id, {
+      profile: this.profile,
+      player: this.player.position,
+      playtime: time,
+      houseHostel: hostel ? { x: hostel.center.x, z: hostel.center.z } : null,
+      insideHouseHostel: this.world.isInsideHouseHostel(this.profile.houseId, this.player.position),
+      mode: "playing",
+      crouching: this.crouching,
+    });
+    if (!view) {
+      this.showToast("That teacher is not ready to talk just now.");
+      return;
+    }
+    this.input.setEnabled(false);
+    this.store.setPrompt(null);
+    this.releasePointerLock();
+    this.dialogueSource = "teacher";
+    this.teacherDialogueId = id;
+    const controller = this.teachers.teacher(id);
+    if (controller) this.dialogueAnchor.copy(controller.position);
+    this.store.setDialogue(view);
+    this.store.setScreen("dialogue");
+    this.audio.uiClick();
+  }
+
+  private finishTeacherDialogue(): void {
+    this.dialogueSource = null;
+    this.teacherDialogueId = null;
+    this.store.setDialogue(null);
+    this.store.patch({ screen: "playing" });
+    this.input.reset();
+    this.input.setEnabled(true);
+    this.playtime = Math.max(this.playtime, 0);
+    this.syncDisciplineHud(true);
+    this.saveGame(false);
+    this.requestPointerLock();
+  }
+
+  closeDialogue(): void {
+    if (this.store.getState().screen !== "dialogue") return;
+    if (this.dialogueSource === "teacher") {
+      this.teachers?.closeConversation();
+      this.finishTeacherDialogue();
+      return;
+    }
+    if (this.dialogueSource === "night" || this.dialogueSource === "caught") {
+      this.night.endDialogue();
+      this.dialogueSource = null;
+      this.store.setDialogue(null);
+      this.store.patch({ screen: "playing" });
+      this.input.reset();
+      this.input.setEnabled(true);
+      this.requestPointerLock();
+      return;
+    }
+    this.npc.end();
+    this.dialogueSource = null;
+    this.store.setDialogue(null);
+    this.store.patch({ screen: "playing" });
+    this.input.reset();
+    this.input.setEnabled(true);
+    this.requestPointerLock();
   }
 
   private openDialogue(): void {
@@ -2431,6 +2672,17 @@ export class GameEngine {
         this.player.moving,
       );
 
+      const teachersEnabled = !this.multiplayer && !this.nightMode;
+      this.teachers?.setEnabled(teachersEnabled);
+      if (teachersEnabled) {
+        this.teachers?.update(dt, this.elapsed, this.teacherContext("playing"));
+        this.disciplineHudTimer += dt;
+        if (this.disciplineHudTimer >= 0.25) {
+          this.disciplineHudTimer = 0;
+          this.syncDisciplineHud();
+        }
+      }
+
       const target = this.interaction.update(this.player.position);
       const crate = this.multiplayer
         ? this.multiplayer.layer.nearestCrate(this.player.position.x, this.player.position.z)
@@ -2460,11 +2712,20 @@ export class GameEngine {
       if (seconds !== state.playtime) this.store.patch({ playtime: seconds });
     } else if (state.screen === "dialogue") {
       this.cameraController.updateDialogue(dt, this.player.position, this.dialogueAnchor);
+      if (this.dialogueSource === "teacher" && this.teachers && !this.multiplayer && !this.nightMode) {
+        this.teachers.setEnabled(true);
+        this.teachers.update(dt, this.elapsed, this.teacherContext("dialogue"));
+        this.syncDisciplineHud();
+      } else {
+        this.teachers?.setEnabled(false);
+      }
       this.store.setPrompt(null);
     } else if (state.screen === "menu" || state.screen === "creation") {
+      this.teachers?.setEnabled(false);
       this.cameraController.updateCinematic(this.elapsed);
       this.store.setPrompt(null);
     } else {
+      this.teachers?.setEnabled(false);
       this.store.setPrompt(null);
     }
 

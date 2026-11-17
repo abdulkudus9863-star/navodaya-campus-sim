@@ -11,6 +11,8 @@ export interface StudentCharacter {
   houseName: string;
   houseColor: string;
   className: string;
+  /** Fixed class roll for authored students; null means the roster has none. */
+  rollNumber: number | null;
   section: string | null;
   nickname: string | null;
   biography: string | null;
@@ -26,7 +28,7 @@ export interface StudentCharacter {
 type Seed = [id: string, name: string, houseId: HouseId];
 
 const SEEDS: Seed[] = [
-  ["ARV-001", "Abdul Kudus", "aravali"],
+  ["ARV-001", "Abdul Kuddus", "aravali"],
   ["ARV-002", "Suraj", "aravali"],
   ["ARV-003", "Paikhomba", "aravali"],
   ["ARV-004", "Starson", "aravali"],
@@ -63,9 +65,10 @@ function build(seed: Seed): StudentCharacter {
     houseId: house.id,
     houseName: house.name,
     houseColor: house.color,
-    // Class is the game's starting cohort. No biography, nickname, personal
-    // details or likeness are invented for these records.
-    className: "VII",
+    // The playable student is the authored Class 10 identity. Other roster
+    // records retain the starting cohort; no biography or likeness is invented.
+    className: seed[0] === "ARV-001" ? "10" : "VII",
+    rollNumber: seed[0] === "ARV-001" ? 34 : null,
     section: null,
     nickname: null,
     biography: null,

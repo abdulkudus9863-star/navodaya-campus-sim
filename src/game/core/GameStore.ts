@@ -40,6 +40,7 @@ export class GameStore {
       nightResult: null,
       escapeSave: null,
       gardenDuty: null,
+      discipline: null,
       exploration: null,
       planOpen: false,
       campusMapOpen: false,

@@ -41,6 +41,25 @@ export type GlassesStyle = "none" | "round" | "rect";
 export type WatchStyle = "none" | "steel" | "black";
 export type BackpackStyle = "none" | "navy" | "olive";
 
+export type TeacherPersonalityId = "strict" | "friendly" | "serious" | "funny" | "neutral";
+export type TeacherAreaId =
+  | "hostel"
+  | "academic"
+  | "playground"
+  | "dining"
+  | "entrance"
+  | "assembly"
+  | "garden";
+export type TimetablePhaseId =
+  | "assembly"
+  | "class"
+  | "break"
+  | "lunch"
+  | "games"
+  | "prep"
+  | "dinner"
+  | "hostel";
+
 export interface CharacterSettings {
   /** Retained for save compatibility. The vest colour is taken from the house. */
   uniform: "navy" | "olive" | "maroon";
@@ -102,6 +121,70 @@ export interface ExplorationView {
   tourStarted: boolean;
 }
 
+export interface TeacherMemoryEntry {
+  at: number;
+  encounter: number;
+  question: string;
+  reply: string;
+  outcome: "positive" | "neutral" | "warning" | "disciplined";
+  warned: boolean;
+}
+
+export interface TeacherMemory {
+  encounters: number;
+  warnings: number;
+  lastSeenAt: number;
+  lastQuestion: string | null;
+  lastOutcome: TeacherMemoryEntry["outcome"] | null;
+  history: TeacherMemoryEntry[];
+}
+
+export interface TeacherDisciplineSave {
+  active: boolean;
+  teacherId: string;
+  task: "return-hostel" | null;
+  startedAt: number;
+  deadlineAt: number;
+}
+
+export interface TeacherSave {
+  reputation: number;
+  memories: Record<string, TeacherMemory>;
+  discipline: TeacherDisciplineSave;
+  cooldowns: Record<string, number>;
+}
+
+export interface DisciplineView {
+  active: boolean;
+  teacherName: string;
+  task: string;
+  secondsLeft: number;
+}
+
+export interface TeacherDialogueMeta {
+  teacherId: string;
+  name: string;
+  subject: string;
+  gender: "male" | "female" | "unspecified";
+  personality: TeacherPersonalityId;
+  personalityLabel: string;
+  period: string;
+  location: string;
+  warningCount: number;
+  reputation: number;
+  mood: "stern" | "calm" | "encouraging" | "amused";
+  portrait: {
+    skin: string;
+    hair: string;
+    shirt: string;
+    accents: string;
+    glasses: boolean;
+    beard: boolean;
+    moustache: boolean;
+  };
+  notice: string | null;
+}
+
 export interface SaveData {
   version: 2;
   savedAt: number;
@@ -114,6 +197,7 @@ export interface SaveData {
   night: NightSave;
   exploration: ExplorationSave;
   escape: EscapeSave;
+  teachers: TeacherSave;
 }
 
 export interface DialogueChoice {
@@ -134,6 +218,8 @@ export interface DialogueView {
   text: string;
   choices: { label: string; next: string }[];
   canAdvance: boolean;
+  /** Present only for teacher conversations; legacy NPC dialogue omits it. */
+  teacher?: TeacherDialogueMeta;
 }
 
 export interface NoticeView {
@@ -229,6 +315,7 @@ export interface GameUIState {
   nightResult: NightResultView | null;
   escapeSave: EscapeSave | null;
   gardenDuty: GardenDutyView | null;
+  discipline: DisciplineView | null;
   exploration: ExplorationView | null;
   planOpen: boolean;
   campusMapOpen: boolean;

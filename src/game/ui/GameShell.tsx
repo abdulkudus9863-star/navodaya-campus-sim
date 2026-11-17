@@ -44,6 +44,7 @@ import { MobileControls } from "./MobileControls";
 import { NightResultOverlay } from "./NightResult";
 import { ProfilePanel } from "./ProfilePanel";
 import { SettingsPanel } from "./SettingsPanel";
+import { TeacherPortrait } from "./TeacherPortrait";
 
 function detectTouch(): boolean {
   if (typeof window === "undefined") return false;
@@ -701,7 +702,7 @@ function Hud({
       <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/55 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent" />
 
-      {!night && !duty && !multiplayer && (
+      {!night && !duty && !multiplayer && !state.discipline?.active && (
       <motion.div
         key={mission.objective}
         initial={{ opacity: 0, y: -8 }}
@@ -741,6 +742,7 @@ function Hud({
 
       {night && <NightMissionHud night={night} />}
       {duty && <GardenDutyHud duty={duty} />}
+      {state.discipline?.active && <TeacherDisciplineHud discipline={state.discipline} />}
 
       <div className="absolute right-0 top-0 z-10 flex flex-col items-end gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:p-6">
         {profile && (
@@ -848,6 +850,30 @@ function Hud({
         </div>
       )}
     </div>
+  );
+}
+
+function TeacherDisciplineHud({ discipline }: { discipline: NonNullable<GameUIState["discipline"]> }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      data-testid="teacher-discipline-hud"
+      className="absolute left-4 top-[max(4.6rem,calc(env(safe-area-inset-top)+3.4rem))] z-20 w-[min(15rem,calc(100%-8.5rem))] border border-[#d9b56d]/45 bg-[#0d130e]/92 px-4 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.55)] backdrop-blur-sm sm:left-1/2 sm:top-6 sm:w-[min(22rem,calc(100%-2rem))] sm:-translate-x-1/2"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-ui text-[8px] uppercase tracking-[0.22em] text-[#d9b56d]/80">
+          Staff check · {discipline.teacherName}
+        </p>
+        <span className="inline-flex items-center gap-1 font-ui text-[10px] tabular-nums text-[#f0dfba]">
+          <Clock className="size-3" /> {Math.floor(discipline.secondsLeft / 60)}:{String(discipline.secondsLeft % 60).padStart(2, "0")}
+        </span>
+      </div>
+      <p className="mt-1 font-display text-base text-[#f4ead6]">{discipline.task}</p>
+      <p className="mt-0.5 font-ui text-[10px] leading-relaxed text-foreground/50">
+        Enter your own house hostel before the timer ends. Your progress and save are untouched.
+      </p>
+    </motion.div>
   );
 }
 
@@ -1147,52 +1173,91 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
 function DialogueOverlay({ state, engine }: { state: GameUIState; engine: GameEngine | null }) {
   const dialogue = state.dialogue;
   if (!dialogue) return null;
+  const teacher = dialogue.teacher;
 
   return (
-    <div className="absolute inset-0 z-40 flex flex-col justify-end">
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/40" />
+    <div className="absolute inset-0 z-40 flex flex-col justify-end" data-testid="teacher-dialogue">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/45" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-black/85" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-black/85" />
 
       <motion.div
         initial={{ opacity: 0, y: 22 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="relative mx-auto w-full max-w-3xl px-5 pb-14 sm:px-8 sm:pb-16"
+        transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+        className="relative mx-auto w-full max-w-3xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-8 sm:pb-8"
       >
-        <div className="mb-4 flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-full border border-primary/50 bg-[#1a1610] font-display text-lg text-primary">
-            M
-          </span>
-          <div>
-            <p className="font-display text-lg leading-none text-[#f4ead6]">{dialogue.speaker}</p>
-            <p className="mt-1 font-ui text-[9px] uppercase tracking-[0.26em] text-primary/60">
+        <div className="mb-3 flex items-start gap-3">
+          {teacher ? (
+            <TeacherPortrait teacher={teacher} size={62} />
+          ) : (
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-primary/50 bg-[#1a1610] font-display text-lg text-primary">
+              M
+            </span>
+          )}
+          <div className="min-w-0 flex-1 pt-0.5">
+            <div className="flex items-center gap-2">
+              <p className="truncate font-display text-xl leading-none text-[#f4ead6] sm:text-2xl">
+                {dialogue.speaker}
+              </p>
+              {teacher && (
+                <span
+                  className="hidden shrink-0 rounded-[2px] border px-1.5 py-0.5 font-ui text-[8px] uppercase tracking-[0.16em] sm:inline"
+                  style={{ borderColor: `${teacher.portrait.accents}66`, color: teacher.portrait.accents }}
+                >
+                  {teacher.personalityLabel}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 font-ui text-[9px] uppercase tracking-[0.24em] text-primary/65">
               {dialogue.role}
             </p>
+            {teacher && (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-ui text-[9px] uppercase tracking-[0.12em] text-foreground/45">
+                <span className="inline-flex items-center gap-1"><Clock className="size-3 text-primary/55" /> {teacher.period}</span>
+                <span className="inline-flex items-center gap-1"><MapIcon className="size-3 text-primary/55" /> {teacher.location}</span>
+                <span className="inline-flex items-center gap-1.5 text-foreground/55"><Shield className="size-3 text-primary/55" /> Conduct {teacher.reputation} · {teacher.warningCount} warning{teacher.warningCount === 1 ? "" : "s"}</span>
+              </div>
+            )}
           </div>
+          <button
+            type="button"
+            onClick={() => engine?.closeDialogue()}
+            aria-label="Close conversation"
+            data-testid="dialogue-close"
+            className="pointer-events-auto flex size-10 shrink-0 items-center justify-center rounded-full border border-foreground/20 bg-black/45 text-foreground/60 backdrop-blur-sm transition hover:border-primary/60 hover:text-primary"
+          >
+            <X className="size-4" />
+          </button>
         </div>
 
-        <div className="hud-panel no-scrollbar max-h-[58dvh] overflow-y-auto rounded-sm px-5 py-5 sm:px-7 sm:py-6">
+        <div className="hud-panel no-scrollbar max-h-[62dvh] overflow-y-auto rounded-sm px-4 py-4 sm:px-7 sm:py-6">
+          {teacher?.notice && (
+            <div className="mb-3 flex items-start gap-2 border border-primary/20 bg-primary/[0.07] px-3 py-2 font-ui text-[10px] leading-relaxed text-primary/85">
+              <Shield className="mt-0.5 size-3.5 shrink-0" />
+              <span>{teacher.notice}</span>
+            </div>
+          )}
           <p className="font-display text-lg leading-relaxed text-[#efe4cd] sm:text-xl">
             {dialogue.text}
           </p>
 
           {dialogue.choices.length > 0 && (
-            <div className="mt-5 space-y-2">
+            <div className="mt-4 space-y-1.5">
               {dialogue.choices.map((choice, index) => (
                 <button
                   key={choice.label}
                   type="button"
                   onClick={() => engine?.chooseDialogue(index)}
-                  className="group flex w-full items-center gap-3 border-t border-foreground/10 py-3 text-left transition-colors hover:text-primary"
+                  data-testid={`dialogue-choice-${index}`}
+                  className="group flex min-h-12 w-full items-center gap-3 border border-foreground/10 bg-black/20 px-3 py-3 text-left transition-colors hover:border-primary/45 hover:bg-primary/[0.06] hover:text-primary active:bg-primary/10"
                 >
                   <span className="font-ui text-[10px] tracking-[0.22em] text-primary/50 group-hover:text-primary">
-                    {String(index + 1).padStart(2, "0")}
+                    {String.fromCharCode(65 + index)}
                   </span>
-                  <span className="font-ui text-sm text-foreground/85 group-hover:text-primary">
+                  <span className="font-ui text-[13px] leading-snug text-foreground/85 group-hover:text-primary sm:text-sm">
                     {choice.label}
                   </span>
-                  <ChevronRight className="ml-auto size-3.5 text-foreground/25 transition group-hover:translate-x-0.5 group-hover:text-primary" />
+                  <ChevronRight className="ml-auto size-3.5 shrink-0 text-foreground/25 transition group-hover:translate-x-0.5 group-hover:text-primary" />
                 </button>
               ))}
             </div>
@@ -1201,12 +1266,12 @@ function DialogueOverlay({ state, engine }: { state: GameUIState; engine: GameEn
           {dialogue.canAdvance ? (
             <div className="mt-5 flex items-center justify-between gap-4 border-t border-foreground/10 pt-4">
               <span className="font-ui text-[9px] uppercase tracking-[0.22em] text-foreground/35">
-                {state.isTouch ? "Tap to continue" : "Space or E to continue"}
+                {state.isTouch ? "Tap to continue" : "Space, E or Enter to continue"}
               </span>
               <button
                 type="button"
                 onClick={() => engine?.advanceDialogue()}
-                className="inline-flex items-center gap-2 rounded-sm border border-primary/50 px-4 py-2 font-ui text-[10px] uppercase tracking-[0.22em] text-primary transition hover:bg-primary/12"
+                className="inline-flex min-h-11 items-center gap-2 rounded-sm border border-primary/50 px-4 py-2 font-ui text-[10px] uppercase tracking-[0.22em] text-primary transition hover:bg-primary/12 active:bg-primary/20"
               >
                 Continue <CornerDownLeft className="size-3" />
               </button>

@@ -60,7 +60,7 @@ export interface FloorRamp {
 
 export interface WorldInteractable {
   id: string;
-  kind: "npc" | "notice" | "door" | "student" | "roommate" | "garden" | "book";
+  kind: "npc" | "notice" | "door" | "student" | "teacher" | "roommate" | "garden" | "book";
   label: string;
   position: THREE.Vector3;
   radius: number;

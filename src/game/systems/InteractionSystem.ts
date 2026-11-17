@@ -57,6 +57,7 @@ export class InteractionSystem {
       case "door":
         return interactable.door ? interactable.door.prompt : "Open the door";
       case "student":
+      case "teacher":
         return `Talk to ${interactable.label}`;
       case "roommate":
         return "Talk to your roommate";

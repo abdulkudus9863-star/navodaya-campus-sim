@@ -16,6 +16,8 @@ import { newPlayerProfile } from "../data/profile";
 import { emptyEscapeSave, sanitizeEscape } from "../data/escape";
 import { getStudent, validateCharacterSelection } from "../data/students";
 import { sanitizeExploration } from "../systems/ExplorationSystem";
+import { TeacherMemoryManager } from "../teachers/TeacherMemoryManager";
+import type { TeacherSave } from "./types";
 
 const KEY = "navodaya.campus.save.v1";
 const QUALITIES: Quality[] = ["low", "medium", "high"];
@@ -82,6 +84,12 @@ export function sanitizeCharacter(raw: unknown): CharacterSettings {
     watch: option(WATCHES, source.watch, DEFAULT_CHARACTER.watch),
     backpack: option(BACKPACKS, source.backpack, DEFAULT_CHARACTER.backpack),
   };
+}
+
+function sanitizeTeachers(raw: unknown): TeacherSave {
+  // The memory manager clamps counts, validates teacher IDs and caps history,
+  // so an edited localStorage payload cannot create a huge or corrupt state.
+  return new TeacherMemoryManager(raw as TeacherSave | undefined).toSave();
 }
 
 function sanitizeNight(raw: unknown): NightSave {
@@ -212,6 +220,7 @@ function sanitizeSave(raw: unknown): SaveData | null {
       version === 1
         ? emptyEscapeSave(profile.playerId)
         : sanitizeEscape(source.escape, profile.playerId),
+    teachers: sanitizeTeachers(source.teachers),
   };
 }
 
