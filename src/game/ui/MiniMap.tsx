@@ -1,4 +1,4 @@
-import { Flag, Maximize2, X } from "lucide-react";
+import { AlertTriangle, Flag, Maximize2, Navigation, X } from "lucide-react";
 import type { GameEngine } from "../core/GameEngine";
 import type { GameUIState } from "../core/types";
 import { getHouse } from "../data/houses";
@@ -27,13 +27,22 @@ export function MiniMap({
 }) {
   const snapshot = useLiveMap(engine, 100);
   const canExpand = !multiplayer && !state.night?.active;
-  const mission = state.profile
+  const referral = state.principalReferral?.active ? state.principalReferral : null;
+  const mission = state.profile && !referral
     ? multiplayer || (!state.night?.active && !state.mission.done)
       ? missionTargetFor(state.mission.step, state.profile.houseId, multiplayer)
       : null
     : null;
   const player = snapshot ? worldToMap(snapshot.playerX, snapshot.playerZ) : null;
   const missionPoint = mission ? worldToMap(mission.x, mission.z) : null;
+  const referralTarget = referral ? worldToMap(referral.destination.x, referral.destination.z) : null;
+  const referralRoute = referral
+    ? referral.route.map((point) => worldToMap(point.x, point.z))
+    : [];
+  const routePoints = referralRoute.map((point) => `${point.x},${point.y}`).join(" ");
+  const routeAhead = referralRoute[0] && player
+    ? Math.atan2(referralRoute[0].x - player.x, -(referralRoute[0].y - player.y))
+    : 0;
   const waypointPoint = waypoint ? worldToMap(waypoint.x, waypoint.z) : null;
   const distance =
     snapshot && waypoint
@@ -66,6 +75,48 @@ export function MiniMap({
       >
         <CampusMapPlan className="absolute inset-0 size-full" />
         <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,transparent_40%,rgba(6,10,7,0.5)_100%)]" />
+
+        {referral && !referral.insideChamber && referralRoute.length > 1 && (
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="pointer-events-none absolute inset-0 z-10 size-full"
+            aria-hidden
+          >
+            <polyline
+              points={routePoints}
+              fill="none"
+              stroke="#0c110b"
+              strokeWidth="4.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.55"
+            />
+            <polyline
+              points={routePoints}
+              fill="none"
+              stroke="#f0cf86"
+              strokeWidth="2.1"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="4 3"
+            />
+          </svg>
+        )}
+
+        {referral && referralTarget && (
+          <span
+            data-testid="principal-minimap-marker"
+            className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${referralTarget.x}%`, top: `${referralTarget.y}%` }}
+            title="Principal's Chamber · Principal Moinm Rahman"
+          >
+            <span className="absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full bg-[#dfb765]/25" />
+            <span className="relative flex size-4 items-center justify-center rounded-full border border-[#f4dfb0] bg-[#7d2f25] shadow-[0_0_0_3px_rgba(240,207,134,0.2)]">
+              <AlertTriangle className="size-2.5 text-[#fff1d2]" strokeWidth={2.6} />
+            </span>
+          </span>
+        )}
 
         {mission && missionPoint && (
           <span
@@ -141,8 +192,22 @@ export function MiniMap({
         </span>
         <span className="sr-only">
           Live campus map. {waypoint ? `Destination ${waypoint.name}.` : ""}
+          {referral ? ` Walkable route to the Principal's Chamber.` : ""}
         </span>
       </button>
+
+      {referral && (
+        <div
+          data-testid="principal-route-distance"
+          className="pointer-events-auto flex max-w-[11rem] items-center gap-1 border border-[#d5b477]/40 bg-[#0a110b]/90 px-2 py-1 font-ui text-[8px] uppercase tracking-[0.12em] text-[#f0dfba]/85 shadow-[0_6px_18px_rgba(0,0,0,0.35)] backdrop-blur-sm sm:max-w-[14rem] sm:text-[9px]"
+        >
+          <Navigation className="size-2.5 shrink-0 text-[#e7c98f]" style={{ transform: `rotate(${routeAhead}rad)` }} />
+          <span className="truncate">Principal's Chamber</span>
+          <span className="shrink-0 text-[#e7c98f]/85">
+            · {referral.insideChamber ? "Report in" : formatMapDistance(referral.distance)}
+          </span>
+        </div>
+      )}
 
       {waypoint && distance !== null && (
         <div

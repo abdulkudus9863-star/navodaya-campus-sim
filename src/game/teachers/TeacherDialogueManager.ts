@@ -50,6 +50,8 @@ export interface TeacherChoiceResult {
   reputationDelta: number;
   notice: string | null;
   answer: string;
+  principalReferral: boolean;
+  referralReason: string | null;
 }
 
 const SUBJECT_QUESTIONS: Record<
@@ -132,6 +134,7 @@ export class TeacherDialogueManager {
   private currentId: string | null = null;
   private context: TeacherDialogueContext | null = null;
   private notice: string | null = null;
+  private referralText: string | null = null;
   private mood: TeacherDialogueMeta["mood"] = "calm";
   private currentQuestion = "";
   private answered = new Set<string>();
@@ -155,6 +158,7 @@ export class TeacherDialogueManager {
     this.nodes.clear();
     this.answered.clear();
     this.notice = null;
+    this.referralText = null;
     this.mood = context.config.personality === "strict" ? "stern" : "calm";
     this.context = context;
     const memory = this.memory.memoryFor(context.config.id);
@@ -219,26 +223,37 @@ export class TeacherDialogueManager {
       warned,
       reputationDelta: delta,
     });
+    const warningsAfter = this.memory.warningsFor(config.id);
+    const principalReferral = warned && (disrespectful || warningsAfter >= 2);
 
     let disciplineStarted = false;
     if (
+      !principalReferral &&
       warned &&
       this.context.violation &&
       config.personality === "strict" &&
-      this.memory.warningsFor(config.id) >= 2 &&
+      warningsAfter >= 2 &&
       !this.memory.disciplineActive()
     ) {
       this.memory.startDiscipline({ teacherId: config.id });
       disciplineStarted = true;
       entry.outcome = "disciplined";
     }
+    if (principalReferral) {
+      // A formal referral supersedes the shorter hostel supervision task.
+      this.memory.cancelDiscipline();
+      this.referralText =
+        "This is now a formal referral: report to the Principal's Chamber immediately. Principal Moinm Rahman is expecting you.";
+    }
 
     this.mood = warned ? "stern" : delta >= 4 ? "encouraging" : config.personality === "funny" ? "amused" : "calm";
-    this.notice = disciplineStarted
-      ? "Discipline task assigned · report to your house hostel"
-      : warned
-        ? `Warning ${this.memory.warningsFor(config.id)} recorded · conduct ${this.memory.reputation}/100`
-        : `${delta >= 0 ? "+" : ""}${delta} conduct · ${this.memory.reputationLabel()}`;
+    this.notice = principalReferral
+      ? "Principal referral issued · report to the Principal's Chamber"
+      : disciplineStarted
+        ? "Discipline task assigned · report to your house hostel"
+        : warned
+          ? `Warning ${warningsAfter} recorded · conduct ${this.memory.reputation}/100`
+          : `${delta >= 0 ? "+" : ""}${delta} conduct · ${this.memory.reputationLabel()}`;
 
     this.currentId = choice.next;
     const nextNode = this.nodes.get(choice.next);
@@ -251,6 +266,12 @@ export class TeacherDialogueManager {
       reputationDelta: delta,
       notice: this.notice,
       answer: choice.label,
+      principalReferral,
+      referralReason: principalReferral
+        ? disrespectful
+          ? `Disrespectful reply during ${this.context.time.label.toLowerCase()} at ${areaLabel(this.context.area)}`
+          : `${warningsAfter} warnings recorded during ${this.context.time.label.toLowerCase()}`
+        : null,
     };
   }
 
@@ -273,6 +294,7 @@ export class TeacherDialogueManager {
     this.nodes.clear();
     this.answered.clear();
     this.notice = null;
+    this.referralText = null;
   }
 
   currentView(): DialogueView {
@@ -290,7 +312,7 @@ export class TeacherDialogueManager {
     return {
       speaker: context.config.name,
       role: `${context.config.subject} · Faculty`,
-      text: node.text,
+      text: `${node.text}${this.referralText ? ` ${this.referralText}` : ""}`,
       choices: (node.choices ?? []).map((choice) => ({ label: choice.label, next: choice.next })),
       canAdvance: !node.choices || node.choices.length === 0,
       teacher: this.meta(),
@@ -556,7 +578,7 @@ export class TeacherDialogueManager {
     this.add({
       id: "repeat-disrespect",
       question: "Why are you here again?",
-      text: "That attitude is precisely the problem. You will report to your house hostel and stay there until the next period. I will be checking.",
+      text: "That attitude is precisely the problem. Report to the Principal's Chamber immediately. Principal Moinm Rahman will hear the full account.",
     });
   }
 
@@ -619,7 +641,7 @@ export class TeacherDialogueManager {
       question: "Why are you here instead of where you should be?",
       text:
         context.config.id === "dinesh"
-          ? "The timetable is not here to entertain you. It is here so four hundred students can live together. Report to your hostel and wait for me there."
+          ? "The timetable is not here to entertain you. It is here so four hundred students can live together. Report to the Principal's Chamber immediately."
           : "You may find the timetable dull; that does not give you permission to ignore it. Go back to your proper place and we will speak again.",
     });
   }

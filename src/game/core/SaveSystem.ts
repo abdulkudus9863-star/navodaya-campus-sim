@@ -6,6 +6,7 @@ import {
   type GameSettings,
   type NightSave,
   type PlayerProfileSave,
+  type PrincipalReferralSave,
   type Quality,
   type SaveData,
 } from "./types";
@@ -16,6 +17,7 @@ import { newPlayerProfile } from "../data/profile";
 import { emptyEscapeSave, sanitizeEscape } from "../data/escape";
 import { getStudent, validateCharacterSelection } from "../data/students";
 import { sanitizeExploration } from "../systems/ExplorationSystem";
+import { emptyPrincipalReferral } from "../systems/PrincipalReferralSystem";
 import { TeacherMemoryManager } from "../teachers/TeacherMemoryManager";
 import type { TeacherSave } from "./types";
 
@@ -90,6 +92,31 @@ function sanitizeTeachers(raw: unknown): TeacherSave {
   // The memory manager clamps counts, validates teacher IDs and caps history,
   // so an edited localStorage payload cannot create a huge or corrupt state.
   return new TeacherMemoryManager(raw as TeacherSave | undefined).toSave();
+}
+
+function sanitizePrincipalReferral(raw: unknown): PrincipalReferralSave {
+  const fallback = emptyPrincipalReferral();
+  if (!raw || typeof raw !== "object") return fallback;
+  const source = raw as Partial<PrincipalReferralSave>;
+  const status =
+    source.status === "assigned" || source.status === "in-progress" || source.status === "completed"
+      ? source.status
+      : source.active === true
+        ? "assigned"
+        : "completed";
+  const active = source.active === true && status !== "completed";
+  return {
+    active,
+    status: active ? status : "completed",
+    teacherId: typeof source.teacherId === "string" ? source.teacherId.slice(0, 32) : null,
+    teacherName: typeof source.teacherName === "string" ? source.teacherName.slice(0, 80) : null,
+    reason: typeof source.reason === "string" ? source.reason.slice(0, 180) : null,
+    assignedAt: clamp(num(source.assignedAt, 0), 0, 8_640_000_000_000_000),
+    completedAt:
+      source.completedAt == null
+        ? null
+        : clamp(num(source.completedAt, 0), 0, 8_640_000_000_000_000),
+  };
 }
 
 function sanitizeNight(raw: unknown): NightSave {
@@ -221,6 +248,7 @@ function sanitizeSave(raw: unknown): SaveData | null {
         ? emptyEscapeSave(profile.playerId)
         : sanitizeEscape(source.escape, profile.playerId),
     teachers: sanitizeTeachers(source.teachers),
+    principalReferral: sanitizePrincipalReferral(source.principalReferral),
   };
 }
 

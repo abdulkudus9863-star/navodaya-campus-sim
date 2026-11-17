@@ -161,6 +161,31 @@ export interface DisciplineView {
   secondsLeft: number;
 }
 
+export type PrincipalReferralStatus = "assigned" | "in-progress" | "completed";
+
+export interface PrincipalReferralSave {
+  active: boolean;
+  status: PrincipalReferralStatus;
+  teacherId: string | null;
+  teacherName: string | null;
+  reason: string | null;
+  assignedAt: number;
+  completedAt: number | null;
+}
+
+export interface PrincipalReferralView {
+  active: boolean;
+  status: PrincipalReferralStatus;
+  title: string;
+  objective: string;
+  teacherName: string | null;
+  reason: string | null;
+  destination: { x: number; z: number };
+  route: { x: number; z: number }[];
+  distance: number;
+  insideChamber: boolean;
+}
+
 export interface TeacherDialogueMeta {
   teacherId: string;
   name: string;
@@ -198,6 +223,7 @@ export interface SaveData {
   exploration: ExplorationSave;
   escape: EscapeSave;
   teachers: TeacherSave;
+  principalReferral: PrincipalReferralSave;
 }
 
 export interface DialogueChoice {
@@ -316,6 +342,7 @@ export interface GameUIState {
   escapeSave: EscapeSave | null;
   gardenDuty: GardenDutyView | null;
   discipline: DisciplineView | null;
+  principalReferral: PrincipalReferralView | null;
   exploration: ExplorationView | null;
   planOpen: boolean;
   campusMapOpen: boolean;

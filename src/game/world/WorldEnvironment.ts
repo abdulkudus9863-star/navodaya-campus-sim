@@ -22,6 +22,7 @@ import {
 import { getHouseCaptain, getHousePrefect } from "../data/students";
 import { GARDEN_ITEMS, type GardenItemId } from "../data/night";
 import { INTERIOR_CONTENT } from "../data/interiors";
+import { PRINCIPAL, isInsidePrincipalChamber } from "../data/principal";
 import type { NoticeView } from "../core/types";
 
 export interface BlockCollider {
@@ -60,7 +61,7 @@ export interface FloorRamp {
 
 export interface WorldInteractable {
   id: string;
-  kind: "npc" | "notice" | "door" | "student" | "teacher" | "roommate" | "garden" | "book";
+  kind: "npc" | "principal" | "notice" | "door" | "student" | "teacher" | "roommate" | "garden" | "book";
   label: string;
   position: THREE.Vector3;
   radius: number;
@@ -215,6 +216,8 @@ export class WorldEnvironment {
   fill: THREE.DirectionalLight | null = null;
   roommate: CharacterRig | null = null;
   roommateTag: THREE.Sprite | null = null;
+  principal: CharacterRig | null = null;
+  principalTag: THREE.Sprite | null = null;
 
   private builder: MeshBuilder;
   private materials: MaterialLibrary = {};
@@ -224,6 +227,7 @@ export class WorldEnvironment {
   private flagBase: Float32Array | null = null;
   private flagTime = 0;
   private npcBaseY = 0;
+  private principalBaseY = 0;
   private markerMaterials: THREE.MeshBasicMaterial[] = [];
   private signMeshes: THREE.Mesh[] = [];
   private houseFlagMaterials: Record<HouseId, THREE.MeshStandardMaterial> = {} as Record<HouseId, THREE.MeshStandardMaterial>;
@@ -2218,10 +2222,16 @@ export class WorldEnvironment {
     this.builder.box("plasterWarm", { w: 11, h: 0.18, d: 8 }, 13, 3.5, 43.5, {});
 
     // Interior partitions: principal's office and staff room.
-    this.wallAlongX(43.9, 14.6, 18.3, 3.2, "plasterWarm", "admin-office");
+    this.wallAlongX(
+      43.9,
+      14.6,
+      18.3,
+      3.2,
+      "plasterWarm",
+      "admin-office",
+      [PRINCIPAL.door.gap[0], PRINCIPAL.door.gap[1]],
+    );
     this.wallAlongZ(13.2, 43.9, 47.3, 3.2, "plasterWarm", "admin-office");
-    this.builder.box("woodDark", { w: 1.5, h: 2.1, d: 0.06 }, 15.35, 1.05, 43.69, {});
-    this.builder.box("glass", { w: 1.2, h: 1.15, d: 0.04 }, 15.35, 1.55, 43.64, {});
     this.sign("signPrincipal", 2.5, 0.52, 16.45, 2.65, 43.59, 0);
 
     this.builder.box("roof", { w: 11.8, h: 0.22, d: 8.8 }, 13, 4.55, 43.5, {});
@@ -2278,7 +2288,6 @@ export class WorldEnvironment {
     this.builder.plane("glassWarm", 2.0, 1.2, 15.0, 2.2, 47.12, { rotY: Math.PI });
 
     this.addInteriorLight(11, 42.2, 7);
-    this.addInteriorLight(16.2, 45.4, 6);
 
     const door = this.createDoor({
       hinge: new THREE.Vector3(12.0, 0, 39.7),
@@ -2318,6 +2327,86 @@ export class WorldEnvironment {
       notice: INTERIOR_CONTENT.principalDesk,
       roomId: "admin-principal-office",
     });
+
+    const officeDoor = this.createDoor({
+      hinge: new THREE.Vector3(PRINCIPAL.door.hinge.x, 0, PRINCIPAL.door.hinge.z),
+      width: PRINCIPAL.door.width,
+      height: 2.2,
+      openAngle: -1.35,
+      baseRotationY: -Math.PI / 2,
+      label: "principal-chamber",
+      opening: "Enter the Principal's Chamber",
+      closing: "Close the Principal's Chamber door",
+    });
+    officeDoor.collider = this.collider(14.6, 16.1, 43.72, 44.08, "principal-chamber-door");
+    this.interactables.push({
+      id: "principal-chamber-door",
+      kind: "door",
+      label: "Principal's Chamber",
+      position: new THREE.Vector3(15.35, 0, 43.2),
+      radius: 2.15,
+      door: officeDoor,
+      roomId: "admin-principal-office",
+    });
+
+    this.buildPrincipal();
+  }
+
+  /** The single authoritative Principal NPC, seated behind the office desk. */
+  private buildPrincipal(): void {
+    const rig = createCharacter({
+      uniform: "#6b5b3d",
+      skin: "#8a5a3c",
+      detail: "low",
+      senior: true,
+      face: "square",
+      hairStyle: "short",
+      hairColor: "black",
+      eyeColor: "dark",
+      brows: "bold",
+      build: "broad",
+      glasses: "rect",
+      watch: "steel",
+      backpack: "none",
+    });
+    rig.group.name = "principal-moinm-rahman";
+    rig.group.position.set(PRINCIPAL.npcPosition.x, 0, PRINCIPAL.npcPosition.z);
+    rig.group.rotation.y = Math.PI;
+    rig.group.scale.set(1.04, 1.12, 1.04);
+    rig.parts.shirtMaterial.color.set("#e7deca");
+    rig.parts.trouserMaterial.color.set("#22272b");
+    rig.parts.badgeMaterial.color.set("#b8965a");
+    rig.parts.hairMaterials.forEach((material) => material.color.set("#211c18"));
+    this.group.add(rig.group);
+    this.principal = rig;
+    this.principalBaseY = rig.group.position.y;
+
+    const texture = nameTagTexture(PRINCIPAL.name, "School Principal · Prashasan");
+    this.disposables.push(texture);
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.disposables.push(material);
+    const tag = new THREE.Sprite(material);
+    tag.position.set(PRINCIPAL.npcPosition.x, 2.42, PRINCIPAL.npcPosition.z);
+    tag.scale.set(2.15, 0.6, 1);
+    tag.renderOrder = 10;
+    this.group.add(tag);
+    this.principalTag = tag;
+
+    this.interactables.push({
+      id: "principal",
+      kind: "principal",
+      label: `Principal ${PRINCIPAL.name}`,
+      position: new THREE.Vector3(PRINCIPAL.interactionPoint.x, 0, PRINCIPAL.interactionPoint.z),
+      radius: PRINCIPAL.interactionRadius,
+      active: true,
+      roomId: "admin-principal-office",
+    });
+    this.addInteriorLight(16.2, 45.4, 6);
   }
 
   /** Walk-in practical science wing with two entrance leaves. */
@@ -3437,6 +3526,10 @@ export class WorldEnvironment {
     );
   }
 
+  isInsidePrincipalChamber(position: THREE.Vector3): boolean {
+    return isInsidePrincipalChamber(position.x, position.z);
+  }
+
   /** Read-only diagnostic snapshot used by the development test hooks. */
   inspect() {
     return {
@@ -3604,6 +3697,22 @@ export class WorldEnvironment {
         const distance = this.npcNameTag.position.distanceTo(playerPosition);
         const material = this.npcNameTag.material as THREE.SpriteMaterial;
         material.opacity = THREE.MathUtils.clamp(1 - (distance - 10) / 18, 0, 1);
+      }
+    }
+
+    if (this.principal) {
+      this.principal.group.position.y = this.principalBaseY + Math.sin(elapsed * 1.2) * 0.006;
+      this.principal.torso.rotation.z = Math.sin(elapsed * 0.65) * 0.008;
+      const dx = playerPosition.x - this.principal.group.position.x;
+      const dz = playerPosition.z - this.principal.group.position.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance < 7.5) {
+        const toPlayer = Math.atan2(dx, dz);
+        this.principal.group.rotation.y += shortestAngle(this.principal.group.rotation.y, toPlayer) * Math.min(1, dt * 2.6);
+      }
+      if (this.principalTag) {
+        const tagMaterial = this.principalTag.material as THREE.SpriteMaterial;
+        tagMaterial.opacity = THREE.MathUtils.clamp(1 - (distance - 8) / 12, 0, 1);
       }
     }
 

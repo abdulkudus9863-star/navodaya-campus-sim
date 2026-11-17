@@ -27,6 +27,9 @@ import { ExplorationSystem } from "../systems/ExplorationSystem";
 import { NPCSystem } from "../systems/NPCSystem";
 import { TeacherSystem } from "../teachers/TeacherSystem";
 import { emptyTeacherSave, type TeacherId } from "../data/teachers";
+import { PrincipalReferralSystem } from "../systems/PrincipalReferralSystem";
+import { PrincipalDialogue } from "../systems/PrincipalDialogue";
+import { PRINCIPAL } from "../data/principal";
 import { PlayerController, collidesAt } from "../systems/PlayerController";
 import { WorldEnvironment, type WorldZone } from "../world/WorldEnvironment";
 import { MultiplayerLayer } from "../world/MultiplayerLayer";
@@ -106,6 +109,9 @@ export class GameEngine {
   private interaction: InteractionSystem;
   private npc = new NPCSystem();
   private teachers: TeacherSystem | null = null;
+  private principalReferral: PrincipalReferralSystem | null = null;
+  private principalDialogue = new PrincipalDialogue();
+  private principalReferralTimer = 0;
   private mission = new MissionSystem();
   private night = new NightMissionSystem();
   private exploration = new ExplorationSystem();
@@ -121,7 +127,7 @@ export class GameEngine {
   private nightHudTimer = 0;
   private disciplineHudTimer = 0;
   private crouching = false;
-  private dialogueSource: "meera" | "night" | "caught" | "teacher" | null = null;
+  private dialogueSource: "meera" | "night" | "caught" | "teacher" | "principal" | null = null;
   private teacherDialogueId: TeacherId | null = null;
   private lastDiscipline: DisciplineView | null = null;
   private dialogueAnchor = new THREE.Vector3();
@@ -254,6 +260,7 @@ export class GameEngine {
 
       this.teachers = new TeacherSystem(this.world);
       this.teachers.attach(this.scene);
+      this.principalReferral = new PrincipalReferralSystem(this.world.colliders);
 
       if (this.renderer) {
         try {
@@ -286,6 +293,8 @@ export class GameEngine {
         this.mission.setHouseName(house?.shortName ?? "your house");
         this.exploration.restore(saved.data.exploration);
         this.teachers?.reset(saved.data.teachers);
+        this.principalReferral?.restore(saved.data.principalReferral, saved.data.player.position);
+        this.store.patch({ principalReferral: this.principalReferral?.view(this.player.position) ?? null });
         this.refreshExploration();
       } else {
         this.store.patch({ hasSave: false });
@@ -370,6 +379,11 @@ export class GameEngine {
               }
             : null,
           teachers: engine.teachers?.snapshot() ?? null,
+          principalReferral:
+            engine.principalReferral?.isActive
+              ? engine.principalReferral.view(engine.player.position)
+              : null,
+          principalChamber: engine.world.isInsidePrincipalChamber(engine.player.position),
           night: {
             mode: engine.nightMode,
             active: engine.night.active,
@@ -513,6 +527,63 @@ export class GameEngine {
           return engine.store.getState().screen;
         },
       },
+      principal: {
+        snapshot() {
+          return {
+            save: engine.principalReferral?.toSave() ?? null,
+            view: engine.principalReferral?.view(engine.player.position) ?? null,
+            chamber: engine.world.isInsidePrincipalChamber(engine.player.position),
+            screen: engine.store.getState().screen,
+          };
+        },
+        assign(teacherId = "dinesh") {
+          const teacher = engine.teachers?.teacher(teacherId as TeacherId);
+          if (!engine.principalReferral || !engine.profile) return false;
+          const ok = engine.principalReferral.assign({
+            teacherId,
+            teacherName: teacher?.config.name ?? "Dinesh Sir",
+            reason: "Disrespectful reply during class",
+            player: engine.player.position,
+            now: Date.now(),
+          });
+          if (ok) {
+            engine.principalReferral.update(engine.player.position, 0);
+            engine.store.patch({ principalReferral: engine.principalReferral.view(engine.player.position) });
+          }
+          return ok;
+        },
+        refresh() {
+          if (!engine.principalReferral?.isActive) return null;
+          engine.principalReferral.update(engine.player.position, 10);
+          const view = engine.principalReferral.view(engine.player.position);
+          engine.store.patch({ principalReferral: view });
+          return view;
+        },
+        teleportToDoor() {
+          engine.player.placeAt(new THREE.Vector3(15.35, 0, 42.8), 0);
+          engine.cameraController.resetToPlayer(engine.player.position, 0);
+        },
+        teleportInside() {
+          engine.player.placeAt(new THREE.Vector3(16.3, 0, 44.45), Math.PI);
+          engine.cameraController.resetToPlayer(engine.player.position, Math.PI);
+        },
+        talk() {
+          engine.openPrincipalDialogue();
+          return engine.store.getState().dialogue;
+        },
+        choose(index: number) {
+          engine.chooseDialogue(index);
+          return engine.store.getState().dialogue;
+        },
+        advance() {
+          engine.advanceDialogue();
+          return engine.store.getState().screen;
+        },
+        close() {
+          engine.closeDialogue();
+          return engine.store.getState().screen;
+        },
+      },
       roster() {
         return {
           count: STUDENT_ROSTER.length,
@@ -555,6 +626,8 @@ export class GameEngine {
     this.suspicion = 0;
     this.escapeData = null;
     this.teachers?.reset();
+    this.principalReferral?.reset();
+    this.principalDialogue.end();
     this.syncDisciplineHud(true);
     this.setCrouching(false);
     this.store.patch({
@@ -568,6 +641,7 @@ export class GameEngine {
       night: null,
       nightResult: null,
       gardenDuty: null,
+      principalReferral: null,
       escapeSave: null,
     });
     this.input.setEnabled(false);
@@ -617,6 +691,8 @@ export class GameEngine {
     this.player.resetToSpawn(this.world.spawn);
     this.mission.startNew();
     this.store.setMission(this.mission.view());
+    this.principalReferral?.reset();
+    this.principalDialogue.end();
     this.playtime = 0;
     for (const door of this.world.doors) door.setOpenInstant(false);
     this.store.patch({
@@ -628,6 +704,7 @@ export class GameEngine {
       profileOpen: false,
       crouching: false,
       gardenDuty: null,
+      principalReferral: null,
       exploration: this.explorationView(),
       planOpen: false,
       campusMapOpen: false,
@@ -691,6 +768,8 @@ export class GameEngine {
     this.night.restore(data.night);
     this.exploration.restore(data.exploration);
     this.teachers?.reset(data.teachers);
+    this.principalReferral?.restore(data.principalReferral, restoredPosition);
+    this.principalDialogue.end();
     this.syncDisciplineHud(true);
     this.cancelGardenDuty(false);
     this.nightCaughtHandled = false;
@@ -718,6 +797,9 @@ export class GameEngine {
       gardenDuty: null,
       exploration: this.explorationView(),
       discipline: this.teachers?.disciplineView() ?? null,
+      principalReferral: this.principalReferral?.isActive
+        ? this.principalReferral.view(restoredPosition)
+        : null,
       planOpen: false,
       campusMapOpen: false,
       campusMap: null,
@@ -1577,6 +1659,15 @@ export class GameEngine {
       exploration: this.exploration.toSave(),
       escape: this.escapeData ?? emptyEscapeSave(this.profile.playerId),
       teachers: this.teachers?.toSave() ?? emptyTeacherSave(),
+      principalReferral: this.principalReferral?.toSave() ?? {
+        active: false,
+        status: "completed",
+        teacherId: null,
+        teacherName: null,
+        reason: null,
+        assignedAt: 0,
+        completedAt: null,
+      },
     };
     const ok = this.saveSystem.save(data);
     if (ok) {
@@ -1597,6 +1688,8 @@ export class GameEngine {
     this.profile = null;
     this.escapeData = null;
     this.teachers?.reset();
+    this.principalReferral?.reset();
+    this.principalDialogue.end();
     this.lastDiscipline = null;
     this.nightMode = false;
     this.cancelGardenDuty(false);
@@ -1617,6 +1710,7 @@ export class GameEngine {
       night: null,
       nightResult: null,
       gardenDuty: null,
+      principalReferral: null,
       exploration: null,
       planOpen: false,
       campusMapOpen: false,
@@ -1915,6 +2009,10 @@ export class GameEngine {
       if (teacherId) this.openTeacherDialogue(teacherId);
       return;
     }
+    if (target.kind === "principal") {
+      this.openPrincipalDialogue();
+      return;
+    }
     if (target.kind === "student") {
       return;
     }
@@ -1982,6 +2080,16 @@ export class GameEngine {
 
   advanceDialogue(): void {
     if (this.store.getState().screen !== "dialogue") return;
+    if (this.dialogueSource === "principal") {
+      const ended = this.principalDialogue.advance();
+      if (ended) {
+        this.finishPrincipalDialogue();
+      } else {
+        this.store.setDialogue(this.principalDialogue.currentView());
+        this.audio.uiClick();
+      }
+      return;
+    }
     if (this.dialogueSource === "teacher") {
       const ended = this.teachers?.advance() ?? true;
       if (ended) {
@@ -2014,9 +2122,19 @@ export class GameEngine {
 
   chooseDialogue(index: number): void {
     if (this.store.getState().screen !== "dialogue") return;
+    if (this.dialogueSource === "principal") {
+      if (this.principalDialogue.choose(index)) {
+        this.store.setDialogue(this.principalDialogue.currentView());
+        this.audio.uiClick();
+      }
+      return;
+    }
     if (this.dialogueSource === "teacher") {
       const result = this.teachers?.choose(index);
       if (!result) return;
+      if (result.principalReferral) {
+        this.assignPrincipalReferral(result.referralReason);
+      }
       if (result.ended) {
         this.syncDisciplineHud(true);
         if (result.disciplineStarted) {
@@ -2028,6 +2146,9 @@ export class GameEngine {
       this.store.setDialogue(result.view);
       this.audio.uiClick();
       if (result.warning) this.audio.chime();
+      if (result.principalReferral) {
+        this.assignPrincipalReferral(result.referralReason);
+      }
       this.syncDisciplineHud(true);
       if (result.disciplineStarted) {
         this.showToast("Discipline task assigned. Report to your house hostel before the timer ends.");
@@ -2317,8 +2438,77 @@ export class GameEngine {
     this.requestPointerLock();
   }
 
+  private assignPrincipalReferral(reason: string | null): void {
+    if (!this.profile || !this.principalReferral) return;
+    const teacherId = this.teacherDialogueId;
+    const teacher = teacherId ? this.teachers?.teacher(teacherId) : undefined;
+    const assigned = this.principalReferral.assign({
+      teacherId: teacherId ?? "faculty",
+      teacherName: teacher?.config.name ?? "A teacher",
+      reason: reason ?? "Referred by a teacher for indiscipline",
+      player: this.player.position,
+      now: this.elapsed * 1000,
+    });
+    if (!assigned) return;
+    this.principalReferral.update(this.player.position, 0);
+    this.store.patch({ principalReferral: this.principalReferral.view(this.player.position) });
+    this.showToast("Principal referral issued. Follow the highlighted route to Principal Moinm Rahman.");
+    this.audio.chime();
+  }
+
+  private openPrincipalDialogue(): void {
+    if (!this.profile) return;
+    this.input.setEnabled(false);
+    this.store.setPrompt(null);
+    this.releasePointerLock();
+    this.dialogueSource = "principal";
+    this.dialogueAnchor.set(PRINCIPAL.interactionPoint.x, 0, PRINCIPAL.interactionPoint.z);
+    if (this.principalReferral?.isActive) {
+      this.principalReferral.update(this.player.position, 0);
+      this.store.patch({ principalReferral: this.principalReferral.view(this.player.position) });
+    }
+    const student = getStudent(this.profile.characterId);
+    const referral = this.principalReferral?.isActive ? this.principalReferral.toSave() : null;
+    this.store.setDialogue(
+      this.principalDialogue.start({
+        studentName: student?.displayName ?? "Student",
+        referralActive: Boolean(referral?.active),
+        teacherName: referral?.teacherName ?? null,
+        reason: referral?.reason ?? null,
+      }),
+    );
+    this.store.setScreen("dialogue");
+    this.audio.uiClick();
+  }
+
+  private completePrincipalReferral(): void {
+    if (!this.principalReferral?.isActive) return;
+    this.principalReferral.complete();
+    this.store.patch({ principalReferral: null });
+    this.showToast("Referral resolved. Principal Moinm Rahman has closed the matter.");
+    this.audio.chime();
+    this.saveGame(false);
+  }
+
+  private finishPrincipalDialogue(): void {
+    const resolved = this.principalDialogue.isResolved;
+    this.principalDialogue.end();
+    this.dialogueSource = null;
+    this.store.setDialogue(null);
+    this.store.patch({ screen: "playing" });
+    this.input.reset();
+    this.input.setEnabled(true);
+    if (resolved) this.completePrincipalReferral();
+    this.saveGame(false);
+    this.requestPointerLock();
+  }
+
   closeDialogue(): void {
     if (this.store.getState().screen !== "dialogue") return;
+    if (this.dialogueSource === "principal") {
+      this.finishPrincipalDialogue();
+      return;
+    }
     if (this.dialogueSource === "teacher") {
       this.teachers?.closeConversation();
       this.finishTeacherDialogue();
@@ -2680,6 +2870,14 @@ export class GameEngine {
         if (this.disciplineHudTimer >= 0.25) {
           this.disciplineHudTimer = 0;
           this.syncDisciplineHud();
+        }
+      }
+      if (!this.multiplayer && this.principalReferral?.isActive) {
+        this.principalReferralTimer += dt;
+        if (this.principalReferralTimer >= 0.5) {
+          this.principalReferralTimer = 0;
+          this.principalReferral.update(this.player.position, this.elapsed);
+          this.store.patch({ principalReferral: this.principalReferral.view(this.player.position) });
         }
       }
 

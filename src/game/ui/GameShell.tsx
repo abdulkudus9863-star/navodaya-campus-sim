@@ -694,6 +694,7 @@ function Hud({
   const objectiveNumber = Math.min(mission.total, mission.step + 1);
   const night = state.night?.active ? state.night : null;
   const duty = state.gardenDuty;
+  const principal = state.principalReferral?.active ? state.principalReferral : null;
   const profile = state.profile;
   const house = profile ? getHouse(profile.houseId) : null;
 
@@ -702,7 +703,7 @@ function Hud({
       <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/55 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent" />
 
-      {!night && !duty && !multiplayer && !state.discipline?.active && (
+      {!night && !duty && !multiplayer && !state.discipline?.active && !principal && (
       <motion.div
         key={mission.objective}
         initial={{ opacity: 0, y: -8 }}
@@ -742,9 +743,16 @@ function Hud({
 
       {night && <NightMissionHud night={night} />}
       {duty && <GardenDutyHud duty={duty} />}
-      {state.discipline?.active && <TeacherDisciplineHud discipline={state.discipline} />}
+      {state.discipline?.active && !principal && <TeacherDisciplineHud discipline={state.discipline} />}
+      {principal && <PrincipalReferralHud referral={principal} />}
 
-      <div className="absolute right-0 top-0 z-10 flex flex-col items-end gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:p-6">
+      <div
+        className={`absolute right-0 top-0 z-10 flex flex-col items-end gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))] ${
+          state.isTouch
+            ? "pr-[max(4.5rem,calc(env(safe-area-inset-right)+4rem))] sm:p-4 sm:pr-[max(5rem,calc(env(safe-area-inset-right)+4.5rem))]"
+            : "pr-[max(0.75rem,env(safe-area-inset-right))] sm:p-6"
+        }`}
+      >
         {profile && (
           <MiniMap
             engine={engine}
@@ -815,7 +823,7 @@ function Hud({
             </span>
           </button>
         )}
-        {!multiplayer && (
+        {!multiplayer && !state.isTouch && (
           <button
             type="button"
             onClick={() => engine?.pause()}
@@ -850,6 +858,39 @@ function Hud({
         </div>
       )}
     </div>
+  );
+}
+
+function PrincipalReferralHud({
+  referral,
+}: {
+  referral: NonNullable<GameUIState["principalReferral"]>;
+}) {
+  const distance = Math.max(0, Math.round(referral.distance));
+  return (
+    <motion.div
+      key={referral.title}
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      data-testid="principal-referral-hud"
+      className="absolute left-4 top-4 z-20 w-[min(17rem,calc(100%-13.5rem))] border-l-2 border-[#d9b56d]/80 bg-[#0d130e]/55 py-1 pl-4 pr-2 backdrop-blur-[2px] sm:left-6 sm:top-6 sm:w-[min(21rem,calc(100%-10rem))]"
+    >
+      <p className="flex items-center gap-2 font-ui text-[8px] uppercase tracking-[0.22em] text-[#e4c37e]">
+        <AlertTriangle className="size-3" /> Principal referral · {referral.teacherName ?? "Staff"}
+      </p>
+      <p className="mt-1.5 font-display text-[15px] leading-snug text-[#f6ecd8] drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+        {referral.title}
+      </p>
+      <p className="mt-1 font-ui text-[11px] leading-relaxed text-[#f0e4ca]/80 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
+        {referral.objective}
+      </p>
+      <p className="mt-1 flex items-center gap-1.5 font-ui text-[9px] uppercase tracking-[0.16em] text-[#e4c37e]/80">
+        <Footprints className="size-3" />
+        {referral.insideChamber
+          ? "In the Principal's Chamber · speak to Principal Moinm Rahman"
+          : `${distance} m to Principal Moinm Rahman · ${referral.status === "assigned" ? "Assigned" : "In progress"}`}
+      </p>
+    </motion.div>
   );
 }
 

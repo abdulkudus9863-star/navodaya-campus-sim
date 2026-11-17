@@ -249,6 +249,8 @@ export class TeacherSystem {
     reputationDelta: number;
     notice: string | null;
     answer: string;
+    principalReferral: boolean;
+    referralReason: string | null;
   } | null {
     if (!this.active) return null;
     const result = this.dialogue.choose(index);

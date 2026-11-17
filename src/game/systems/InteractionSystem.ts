@@ -47,6 +47,7 @@ export class InteractionSystem {
   promptFor(interactable: WorldInteractable): string {
     switch (interactable.kind) {
       case "npc":
+      case "principal":
         return `Talk to ${interactable.label}`;
       case "notice":
         return interactable.id === "notice-board"
