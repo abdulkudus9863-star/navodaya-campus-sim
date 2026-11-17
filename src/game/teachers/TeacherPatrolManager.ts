@@ -1,5 +1,6 @@
 import {
   TEACHER_CONFIGS,
+  TEACHER_IDS,
   TEACHER_ROUTES,
   isTeacherPersonality,
   isTeacherPlace,
@@ -23,15 +24,20 @@ export interface TeacherConfigPatch {
  */
 export class TeacherPatrolManager {
   private configs: Record<TeacherId, TeacherConfig>;
-  private areaIndex: Record<TeacherId, number> = { dinesh: 0, sushil: 0, rahul: 0 };
-  private routeLoops: Record<TeacherId, number> = { dinesh: 0, sushil: 0, rahul: 0 };
+  private areaIndex: Record<TeacherId, number> = Object.fromEntries(
+    TEACHER_IDS.map((id) => [id, 0]),
+  ) as Record<TeacherId, number>;
+  private routeLoops: Record<TeacherId, number> = Object.fromEntries(
+    TEACHER_IDS.map((id) => [id, 0]),
+  ) as Record<TeacherId, number>;
 
   constructor(overrides: Partial<Record<TeacherId, TeacherConfigPatch>> = {}) {
-    this.configs = {
-      dinesh: { ...TEACHER_CONFIGS.dinesh, appearance: { ...TEACHER_CONFIGS.dinesh.appearance } },
-      sushil: { ...TEACHER_CONFIGS.sushil, appearance: { ...TEACHER_CONFIGS.sushil.appearance } },
-      rahul: { ...TEACHER_CONFIGS.rahul, appearance: { ...TEACHER_CONFIGS.rahul.appearance } },
-    };
+    this.configs = Object.fromEntries(
+      TEACHER_IDS.map((id) => [
+        id,
+        { ...TEACHER_CONFIGS[id], appearance: { ...TEACHER_CONFIGS[id].appearance } },
+      ]),
+    ) as Record<TeacherId, TeacherConfig>;
     for (const [id, patch] of Object.entries(overrides)) {
       this.applyPatch(id as TeacherId, patch);
     }
@@ -42,7 +48,7 @@ export class TeacherPatrolManager {
   }
 
   all(): TeacherConfig[] {
-    return [this.configs.dinesh, this.configs.sushil, this.configs.rahul];
+    return TEACHER_IDS.map((id) => this.configs[id]);
   }
 
   areaFor(id: TeacherId): TeacherRouteArea {

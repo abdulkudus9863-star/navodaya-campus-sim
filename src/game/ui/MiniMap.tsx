@@ -2,6 +2,7 @@ import { AlertTriangle, Flag, Maximize2, Navigation, X } from "lucide-react";
 import type { GameEngine } from "../core/GameEngine";
 import type { GameUIState } from "../core/types";
 import { getHouse } from "../data/houses";
+import { CLASS_BUNK_RETURN } from "../data/classBunk";
 import {
   formatMapDistance,
   mapWorldDistance,
@@ -40,6 +41,19 @@ export function MiniMap({
     ? referral.route.map((point) => worldToMap(point.x, point.z))
     : [];
   const routePoints = referralRoute.map((point) => `${point.x},${point.y}`).join(" ");
+  const bunk = state.classBunk?.active ? state.classBunk : null;
+  const bunkNext = bunk
+    ? bunk.objectives.find((objective) => !objective.complete) ?? null
+    : null;
+  const bunkTarget = bunk
+    ? bunk.status === "return"
+      ? { x: CLASS_BUNK_RETURN.x, z: CLASS_BUNK_RETURN.z, label: "Room 101" }
+      : bunkNext
+    : null;
+  const bunkTargetPoint = bunkTarget ? worldToMap(bunkTarget.x, bunkTarget.z) : null;
+  const bunkLine = bunkTarget && player && !referral
+    ? { x1: player.x, y1: player.y, x2: bunkTargetPoint!.x, y2: bunkTargetPoint!.y }
+    : null;
   const routeAhead = referralRoute[0] && player
     ? Math.atan2(referralRoute[0].x - player.x, -(referralRoute[0].y - player.y))
     : 0;
@@ -75,6 +89,36 @@ export function MiniMap({
       >
         <CampusMapPlan className="absolute inset-0 size-full" />
         <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,transparent_40%,rgba(6,10,7,0.5)_100%)]" />
+
+        {bunkLine && (
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="pointer-events-none absolute inset-0 z-10 size-full"
+            aria-hidden
+          >
+            <line
+              x1={bunkLine.x1}
+              y1={bunkLine.y1}
+              x2={bunkLine.x2}
+              y2={bunkLine.y2}
+              stroke="#0c110b"
+              strokeWidth="3.2"
+              strokeLinecap="round"
+              opacity="0.55"
+            />
+            <line
+              x1={bunkLine.x1}
+              y1={bunkLine.y1}
+              x2={bunkLine.x2}
+              y2={bunkLine.y2}
+              stroke="#f0cf86"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeDasharray="3.5 2.5"
+            />
+          </svg>
+        )}
 
         {referral && !referral.insideChamber && referralRoute.length > 1 && (
           <svg
@@ -118,6 +162,19 @@ export function MiniMap({
           </span>
         )}
 
+        {bunkTargetPoint && (
+          <span
+            data-testid="bunk-minimap-target"
+            className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${bunkTargetPoint.x}%`, top: `${bunkTargetPoint.y}%` }}
+            title={bunkTarget?.label ?? "Next stop"}
+          >
+            <span className="flex size-3.5 items-center justify-center rounded-full border border-[#efd79f]/85 bg-[#c9a45d]/25 shadow-[0_0_0_3px_rgba(201,164,93,0.16)]">
+              <span className="size-1.5 rotate-45 bg-[#f6e4bb]" />
+            </span>
+          </span>
+        )}
+
         {mission && missionPoint && (
           <span
             className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
@@ -142,6 +199,21 @@ export function MiniMap({
             </span>
           </span>
         )}
+
+        {bunk && snapshot?.teachers.map((teacher) => {
+          const point = worldToMap(teacher.x, teacher.z);
+          return (
+            <span
+              key={teacher.id}
+              data-testid="bunk-teacher-marker"
+              className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
+              style={{ left: `${point.x}%`, top: `${point.y}%` }}
+              title={`${teacher.name} · on patrol`}
+            >
+              <span className="block size-2 rounded-full border border-[#f5d6c6] bg-[#9b3f2f] shadow-[0_0_0_2px_rgba(8,13,9,0.7)]" />
+            </span>
+          );
+        })}
 
         {snapshot?.remotes.map((remote) => {
           const point = worldToMap(remote.x, remote.z);

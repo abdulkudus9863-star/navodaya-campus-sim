@@ -1,9 +1,12 @@
 import type {
+  FaceShape,
+  HairStyle,
   TeacherAreaId,
   TeacherMemory,
   TeacherPersonalityId,
   TeacherSave,
   TimetablePhaseId,
+  WatchStyle,
 } from "../core/types";
 
 /**
@@ -15,7 +18,18 @@ import type {
  * preference for them. `configureTeacher` can replace these at runtime and
  * the choice is reflected in dialogue, animation and routes immediately.
  */
-export type TeacherId = "dinesh" | "sushil" | "rahul";
+export type TeacherId =
+  | "dinesh"
+  | "sushil"
+  | "rahul"
+  | "bobo"
+  | "uma"
+  | "sarjubala"
+  | "birjit"
+  | "lokeshori"
+  | "ene"
+  | "sanathoi"
+  | "local";
 
 export interface TeacherRoutePoint {
   x: number;
@@ -37,6 +51,12 @@ export interface TeacherAppearance {
   /** A whistle or lanyard reads instantly on the PE teacher. */
   whistle?: boolean;
   lanyard?: boolean;
+  /** Optional silhouette details keep staff NPCs visually distinct. */
+  face?: FaceShape;
+  hairStyle?: HairStyle;
+  watch?: WatchStyle;
+  apron?: "mess";
+  cap?: boolean;
 }
 
 export interface TeacherConfig {
@@ -171,6 +191,21 @@ export const TEACHER_ROUTES: Record<TeacherAreaId, TeacherRouteArea> = {
       { x: -33.4, z: 30.2, pause: 1.6 },
     ],
   },
+  library: {
+    id: "library",
+    label: "Library surroundings",
+    points: [
+      { x: -25.4, z: -27.2, pause: 2.2 },
+      { x: -25, z: -34.4, pause: 1.6 },
+      { x: -31.4, z: -38.4, pause: 2.6 },
+      { x: -40.4, z: -38.3, pause: 1.6 },
+      { x: -46.4, z: -34.4, pause: 2.4 },
+      { x: -46.5, z: -27, pause: 1.4 },
+      { x: -45.8, z: -21.6, pause: 2.2 },
+      { x: -36.4, z: -21.4, pause: 1.6 },
+      { x: -27.4, z: -21.4, pause: 2.4 },
+    ],
+  },
 };
 
 export const TEACHER_CONFIGS: Record<TeacherId, TeacherConfig> = {
@@ -252,9 +287,244 @@ export const TEACHER_CONFIGS: Record<TeacherId, TeacherConfig> = {
       lanyard: true,
     },
   },
+  bobo: {
+    id: "bobo",
+    name: "Bobo",
+    subject: "Geography",
+    gender: "male",
+    personality: "serious",
+    patrolAreas: ["academic", "assembly", "playground", "hostel", "garden", "entrance"],
+    speed: 1.02,
+    detectionRadius: 8.6,
+    approachRadius: 3,
+    classNumber: "10",
+    appearance: {
+      skin: "#8a5a3c",
+      hair: "#171412",
+      shirt: "#435c48",
+      trousers: "#252d2b",
+      accents: "#c79a55",
+      build: "broad",
+      height: 1.18,
+      glasses: false,
+      beard: false,
+      moustache: true,
+      face: "square",
+      hairStyle: "short",
+      watch: "black",
+      lanyard: true,
+    },
+  },
+  uma: {
+    id: "uma",
+    name: "Uma",
+    subject: "Rounder",
+    gender: "female",
+    personality: "strict",
+    patrolAreas: ["academic", "assembly", "playground", "hostel", "garden", "entrance", "dining"],
+    speed: 1.24,
+    detectionRadius: 8.4,
+    approachRadius: 2.7,
+    classNumber: "10",
+    appearance: {
+      skin: "#b57f56",
+      hair: "#2b2521",
+      shirt: "#684a58",
+      trousers: "#2e303b",
+      accents: "#c9a15f",
+      build: "regular",
+      height: 1.07,
+      glasses: true,
+      beard: false,
+      moustache: false,
+      face: "oval",
+      hairStyle: "bun",
+      watch: "steel",
+      lanyard: true,
+    },
+  },
+  sarjubala: {
+    id: "sarjubala",
+    name: "Sarjubala",
+    subject: "Manipuri",
+    gender: "female",
+    personality: "friendly",
+    patrolAreas: ["academic", "assembly", "playground", "hostel", "garden", "entrance", "dining"],
+    speed: 1.12,
+    detectionRadius: 7.5,
+    approachRadius: 2.6,
+    classNumber: "10",
+    appearance: {
+      skin: "#9c6b4a",
+      hair: "#201b19",
+      shirt: "#7d6044",
+      trousers: "#303a44",
+      accents: "#d4ad69",
+      build: "slim",
+      height: 1.05,
+      glasses: false,
+      beard: false,
+      moustache: false,
+      face: "round",
+      hairStyle: "braid",
+      watch: "none",
+    },
+  },
+  birjit: {
+    id: "birjit",
+    name: "Birjit",
+    subject: "Library",
+    gender: "male",
+    personality: "strict",
+    patrolAreas: ["academic", "library"],
+    speed: 1.04,
+    detectionRadius: 7.8,
+    approachRadius: 2.7,
+    classNumber: "10",
+    appearance: {
+      skin: "#a8734c",
+      hair: "#171412",
+      shirt: "#34485a",
+      trousers: "#22262b",
+      accents: "#93aebe",
+      build: "regular",
+      height: 1.12,
+      glasses: true,
+      beard: false,
+      moustache: true,
+      face: "oval",
+      hairStyle: "side",
+      watch: "steel",
+      lanyard: true,
+    },
+  },
+  lokeshori: {
+    id: "lokeshori",
+    name: "Lokeshori",
+    subject: "Physical Education",
+    gender: "female",
+    personality: "strict",
+    patrolAreas: ["playground", "assembly", "academic", "hostel", "entrance", "garden"],
+    speed: 1.36,
+    detectionRadius: 8.8,
+    approachRadius: 2.9,
+    classNumber: "10",
+    appearance: {
+      skin: "#8a5a3c",
+      hair: "#171412",
+      shirt: "#263b2e",
+      trousers: "#18251e",
+      accents: "#d49b4c",
+      build: "slim",
+      height: 1.1,
+      glasses: false,
+      beard: false,
+      moustache: false,
+      face: "oval",
+      hairStyle: "bun",
+      whistle: true,
+      watch: "black",
+    },
+  },
+  ene: {
+    id: "ene",
+    name: "Ene",
+    subject: "Mess server",
+    gender: "female",
+    personality: "friendly",
+    patrolAreas: ["dining"],
+    speed: 0.92,
+    detectionRadius: 6.4,
+    approachRadius: 2.3,
+    classNumber: "10",
+    appearance: {
+      skin: "#b57f56",
+      hair: "#2b2521",
+      shirt: "#d8d1c3",
+      trousers: "#39465a",
+      accents: "#c9824d",
+      build: "regular",
+      height: 1.02,
+      glasses: false,
+      beard: false,
+      moustache: false,
+      face: "round",
+      hairStyle: "bun",
+      apron: "mess",
+      lanyard: true,
+    },
+  },
+  sanathoi: {
+    id: "sanathoi",
+    name: "Sanathoi",
+    subject: "Mess server",
+    gender: "male",
+    personality: "funny",
+    patrolAreas: ["dining"],
+    speed: 0.96,
+    detectionRadius: 6.6,
+    approachRadius: 2.4,
+    classNumber: "10",
+    appearance: {
+      skin: "#8a5a3c",
+      hair: "#201b19",
+      shirt: "#e0d8c9",
+      trousers: "#3d4650",
+      accents: "#b98958",
+      build: "regular",
+      height: 1.06,
+      glasses: false,
+      beard: false,
+      moustache: true,
+      face: "square",
+      hairStyle: "short",
+      apron: "mess",
+      cap: true,
+    },
+  },
+  local: {
+    id: "local",
+    name: "Local",
+    subject: "MTS",
+    gender: "male",
+    personality: "serious",
+    patrolAreas: ["playground", "entrance"],
+    speed: 1.14,
+    detectionRadius: 7.2,
+    approachRadius: 2.5,
+    classNumber: "10",
+    appearance: {
+      skin: "#6b4630",
+      hair: "#171412",
+      shirt: "#4f5a45",
+      trousers: "#30352d",
+      accents: "#b79b67",
+      build: "broad",
+      height: 1.1,
+      glasses: false,
+      beard: false,
+      moustache: true,
+      face: "square",
+      hairStyle: "short",
+      cap: true,
+      watch: "black",
+    },
+  },
 };
 
-export const TEACHER_IDS: readonly TeacherId[] = ["dinesh", "sushil", "rahul"];
+export const TEACHER_IDS: readonly TeacherId[] = [
+  "dinesh",
+  "sushil",
+  "rahul",
+  "bobo",
+  "uma",
+  "sarjubala",
+  "birjit",
+  "lokeshori",
+  "ene",
+  "sanathoi",
+  "local",
+];
 
 export const PERSONALITY_LABELS: Record<TeacherPersonalityId, string> = {
   strict: "Strict & bold",
@@ -280,6 +550,7 @@ export const TEACHER_AREA_IDS: readonly TeacherAreaId[] = [
   "entrance",
   "assembly",
   "garden",
+  "library",
 ];
 
 export function isTeacherId(value: unknown): value is TeacherId {
@@ -406,11 +677,9 @@ export function emptyTeacherMemory(): TeacherMemory {
 export function emptyTeacherSave(): TeacherSave {
   return {
     reputation: 68,
-    memories: {
-      dinesh: emptyTeacherMemory(),
-      sushil: emptyTeacherMemory(),
-      rahul: emptyTeacherMemory(),
-    },
+    memories: Object.fromEntries(
+      TEACHER_IDS.map((id) => [id, emptyTeacherMemory()]),
+    ) as Record<TeacherId, TeacherMemory>,
     discipline: {
       active: false,
       teacherId: "dinesh",

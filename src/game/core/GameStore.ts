@@ -42,6 +42,7 @@ export class GameStore {
       gardenDuty: null,
       discipline: null,
       principalReferral: null,
+      classBunk: null,
       exploration: null,
       planOpen: false,
       campusMapOpen: false,

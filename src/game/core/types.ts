@@ -7,6 +7,7 @@ import type { CampusMapView } from "../data/campus";
 import type { GardenItemId } from "../data/night";
 import type { HouseId } from "../data/houses";
 import type { EscapeSave } from "../data/escape";
+import type { ClassBunkSave } from "../data/classBunk";
 
 export type Quality = "low" | "medium" | "high";
 
@@ -49,7 +50,8 @@ export type TeacherAreaId =
   | "dining"
   | "entrance"
   | "assembly"
-  | "garden";
+  | "garden"
+  | "library";
 export type TimetablePhaseId =
   | "assembly"
   | "class"
@@ -224,6 +226,7 @@ export interface SaveData {
   escape: EscapeSave;
   teachers: TeacherSave;
   principalReferral: PrincipalReferralSave;
+  classBunk: ClassBunkSave;
 }
 
 export interface DialogueChoice {
@@ -307,6 +310,37 @@ export interface GardenDutyView {
   complete: boolean;
 }
 
+export interface ClassBunkObjectiveView {
+  id: string;
+  label: string;
+  area: string;
+  x: number;
+  z: number;
+  complete: boolean;
+}
+
+export interface ClassBunkResultView {
+  outcome: "completed" | "failed" | "ended";
+  title: string;
+  message: string;
+}
+
+export interface ClassBunkView {
+  active: boolean;
+  difficulty: "easy" | "normal" | "hard";
+  difficultyLabel: string;
+  status: "exploring" | "return" | "caught" | "completed" | "failed" | "ended";
+  secondsLeft: number;
+  objectives: ClassBunkObjectiveView[];
+  completed: number;
+  total: number;
+  suspicion: number;
+  exposed: boolean;
+  caughtBy: string | null;
+  result: ClassBunkResultView | null;
+  completedOnce: boolean;
+}
+
 export interface NightResultView {
   outcome: "success" | "caught";
   title: string;
@@ -343,6 +377,7 @@ export interface GameUIState {
   gardenDuty: GardenDutyView | null;
   discipline: DisciplineView | null;
   principalReferral: PrincipalReferralView | null;
+  classBunk: ClassBunkView | null;
   exploration: ExplorationView | null;
   planOpen: boolean;
   campusMapOpen: boolean;

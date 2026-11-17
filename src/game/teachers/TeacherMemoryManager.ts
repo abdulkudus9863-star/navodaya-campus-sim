@@ -4,6 +4,7 @@ import type {
   TeacherSave,
 } from "../core/types";
 import {
+  TEACHER_IDS,
   emptyTeacherMemory,
   emptyTeacherSave,
   isTeacherId,
@@ -195,7 +196,7 @@ export class TeacherMemoryManager {
     const fallback = emptyTeacherSave();
     if (!raw || typeof raw !== "object") return fallback;
     const memories: Record<string, TeacherMemory> = {};
-    for (const id of ["dinesh", "sushil", "rahul"] as const) {
+    for (const id of TEACHER_IDS) {
       const source = raw.memories?.[id];
       if (!source || typeof source !== "object") {
         memories[id] = emptyTeacherMemory();
@@ -239,7 +240,7 @@ export class TeacherMemoryManager {
       };
     }
     const cooldowns: Record<string, number> = {};
-    for (const id of ["dinesh", "sushil", "rahul"]) {
+    for (const id of TEACHER_IDS) {
       const value = Number(raw.cooldowns?.[id]);
       if (Number.isFinite(value) && value > 0) cooldowns[id] = value;
     }

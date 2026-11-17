@@ -1,8 +1,10 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, ChevronRight, Flag, Moon, ShieldCheck, Trophy, Users } from "lucide-react";
+import { ArrowLeft, ChevronRight, Clock3, DoorOpen, Eye, Flag, Moon, ShieldCheck, Trophy, Users } from "lucide-react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
 import type { GameEngine } from "../core/GameEngine";
 import type { GameUIState } from "../core/types";
+import { CLASS_BUNK_DIFFICULTIES, type ClassBunkDifficulty } from "../data/classBunk";
 import { escapeLevelNumber, totalEscapeXp } from "../data/escape";
 import { getHouse } from "../data/houses";
 import { HouseEmblem } from "./HouseVisuals";
@@ -22,6 +24,7 @@ export function AdventureMenu({
   const best = escape?.records.reduce((value, record) => Math.max(value, record.bestScore), 0) ?? 0;
   const nightDone = profile?.achievements.includes("midnight-garden") ?? false;
   const nightActive = state.night?.active ?? false;
+  const [bunkDifficulty, setBunkDifficulty] = useState<ClassBunkDifficulty>("normal");
 
   return (
     <div
@@ -42,13 +45,13 @@ export function AdventureMenu({
       >
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[#d9c9a4]/15 pb-5">
           <div>
-            <p className="label-cinema text-[#d9b56d]/80">Operation Midnight Mischief · Adventure menu</p>
+            <p className="label-cinema text-[#d9b56d]/80">Adventure menu · Optional capers</p>
             <h2 className="mt-2 max-w-2xl font-display text-[clamp(2.4rem,5.4vw,4.2rem)] leading-[0.98] text-[#f2e8d4]">
               Choose your caper.
             </h2>
             <p className="mt-2 max-w-xl font-ui text-[11px] leading-relaxed text-[#e9ddc8]/50">
-              A fictional after-hours stealth game, or the campus obstacle challenge. Both are
-              optional, personal and separate from official house points.
+              Skip a class, sneak through the garden after dark, or run the obstacle course. Every
+              caper is optional, personal and separate from official house points.
             </p>
           </div>
           {profile && house && (
@@ -65,6 +68,73 @@ export function AdventureMenu({
         </header>
 
         <div className="mt-6 grid gap-3 md:grid-cols-2">
+          <div
+            data-testid="adventure-class-bunk"
+            className="group relative overflow-hidden border border-[#c9a45d]/40 bg-[linear-gradient(125deg,#1a1a10_0%,#12180f_58%,#0d1512_100%)] p-5 text-left transition hover:border-[#e8cc8e]/75 sm:p-7 md:col-span-2"
+          >
+            <span className="absolute right-5 top-5 border border-[#9fc38d]/35 bg-[#9fc38d]/10 px-2 py-1 font-ui text-[8px] uppercase tracking-[0.24em] text-[#cfe0bd]/80">
+              PLAYABLE
+            </span>
+            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+              <div className="max-w-2xl">
+                <span className="flex size-11 items-center justify-center rounded-full border border-[#d7b873]/45 text-[#efd79f]">
+                  <DoorOpen className="size-5" />
+                </span>
+                <h3 className="mt-4 font-display text-[clamp(2.1rem,5vw,3.4rem)] leading-none text-[#f5ead4]">
+                  CLASS BUNK
+                </h3>
+                <p className="mt-2 font-ui text-[12px] leading-relaxed text-[#e9ddc8]/70">
+                  Skip the class. Explore the campus. Don't get caught!
+                </p>
+                <p className="mt-3 max-w-xl font-ui text-[10px] leading-relaxed text-[#e9ddc8]/40">
+                  Start inside Room 101, cover real campus stops, watch the patrols on the minimap and
+                  return before the bell. A teacher who spots you sends you straight to Principal Moinm
+                  Rahman.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 font-ui text-[8px] uppercase tracking-[0.16em] text-[#cfe0bd]/55">
+                  <span className="inline-flex items-center gap-1.5"><Clock3 className="size-3" /> Class period timer</span>
+                  <span className="inline-flex items-center gap-1.5"><Eye className="size-3" /> Line-of-sight patrols</span>
+                  <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3" /> Referral consequences</span>
+                </div>
+              </div>
+
+              <div className="w-full shrink-0 md:w-[19rem]">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(Object.keys(CLASS_BUNK_DIFFICULTIES) as ClassBunkDifficulty[]).map((difficulty) => {
+                    const config = CLASS_BUNK_DIFFICULTIES[difficulty];
+                    const selected = bunkDifficulty === difficulty;
+                    return (
+                      <button
+                        key={difficulty}
+                        type="button"
+                        onClick={() => setBunkDifficulty(difficulty)}
+                        aria-pressed={selected}
+                        className={`border px-2 py-2 font-ui text-[9px] uppercase tracking-[0.16em] transition ${
+                          selected
+                            ? "border-[#e8cc8e]/80 bg-[#e8cc8e]/15 text-[#f6e4bb]"
+                            : "border-[#e9ddc8]/15 text-[#e9ddc8]/50 hover:border-[#e9ddc8]/35"
+                        }`}
+                      >
+                        {config.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 min-h-8 font-ui text-[9px] leading-relaxed text-[#e9ddc8]/40">
+                  {CLASS_BUNK_DIFFICULTIES[bunkDifficulty].detail}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => engine?.startClassBunk(bunkDifficulty)}
+                  data-testid="adventure-bunk-start"
+                  className="mt-2 inline-flex w-full items-center justify-center gap-2 border border-[#c9a45d]/65 bg-[#c9a45d]/14 px-4 py-3 font-ui text-[10px] uppercase tracking-[0.22em] text-[#f5e3ba] transition hover:border-[#f0d79d]/90 hover:bg-[#c9a45d]/24"
+                >
+                  <DoorOpen className="size-3.5" /> Skip class · {CLASS_BUNK_DIFFICULTIES[bunkDifficulty].label}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="group relative overflow-hidden border border-[#8fa4b4]/30 bg-[#10151a] p-5 text-left transition hover:border-[#b8cbd8]/65 hover:bg-[#151c22] sm:p-7">
             <span className="absolute right-5 top-5 font-ui text-[9px] uppercase tracking-[0.24em] text-[#9fb9c9]/45">
               Stealth

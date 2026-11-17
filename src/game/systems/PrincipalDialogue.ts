@@ -6,6 +6,8 @@ export interface PrincipalDialogueContext {
   referralActive: boolean;
   teacherName: string | null;
   reason: string | null;
+  /** CLASS BUNK caught flow offers a resume or end decision. */
+  bunkActive?: boolean;
 }
 
 /**
@@ -16,6 +18,7 @@ export class PrincipalDialogue {
   private nodes = new Map<string, DialogueNode>();
   private currentId: string | null = null;
   private resolved = false;
+  private bunkOutcome: "resume" | "end" | null = null;
 
   get isActive(): boolean {
     return this.currentId !== null;
@@ -25,9 +28,14 @@ export class PrincipalDialogue {
     return this.resolved;
   }
 
+  get classBunkOutcome(): "resume" | "end" | null {
+    return this.bunkOutcome;
+  }
+
   start(context: PrincipalDialogueContext): DialogueView {
     this.nodes.clear();
     this.resolved = false;
+    this.bunkOutcome = null;
     const teacher = context.teacherName ?? "your teacher";
     if (!context.referralActive) {
       this.add({
@@ -66,24 +74,49 @@ export class PrincipalDialogue {
       text: `Being unhappy with a decision is not the same as being free to ignore it. Your teacher is responsible for your safety and for the class around you. If you disagree, you bring the matter here calmly, not by disrupting a teacher's work.`,
       next: "commit",
     });
-    this.add({
-      id: "commit",
-      text: "Then we understand each other. Return to your class or hostel, follow the next instruction you are given, and let your conduct improve from today. This conversation will be recorded.",
-      choices: [
-        {
-          label: "Yes, sir. Thank you for hearing me.",
-          next: "close",
-        },
-        {
-          label: "I will do better, sir.",
-          next: "close",
-        },
-      ],
-    });
-    this.add({
-      id: "close",
-      text: "You may go. Remember that respect is shown in what you do after you leave this room.",
-    });
+    if (context.bunkActive) {
+      this.add({
+        id: "commit",
+        text: "Then we understand each other. You have already missed part of your class. Do you want to return to your classroom and finish what you started, or end this foolishness here and now?",
+        choices: [
+          {
+            label: "I will return to class and finish the day properly, sir.",
+            next: "resume-bunk",
+          },
+          {
+            label: "I understand, sir. I will end it here.",
+            next: "end-bunk",
+          },
+        ],
+      });
+      this.add({
+        id: "resume-bunk",
+        text: "Go. Straight back to Room 101, and no more detours. I will be watching the corridors.",
+      });
+      this.add({
+        id: "end-bunk",
+        text: "A sensible choice. Return to your class now. The attempt ends here, but the lesson stays on record.",
+      });
+    } else {
+      this.add({
+        id: "commit",
+        text: "Then we understand each other. Return to your class or hostel, follow the next instruction you are given, and let your conduct improve from today. This conversation will be recorded.",
+        choices: [
+          {
+            label: "Yes, sir. Thank you for hearing me.",
+            next: "close",
+          },
+          {
+            label: "I will do better, sir.",
+            next: "close",
+          },
+        ],
+      });
+      this.add({
+        id: "close",
+        text: "You may go. Remember that respect is shown in what you do after you leave this room.",
+      });
+    }
     this.currentId = "intro";
     return this.currentView();
   }
@@ -114,7 +147,11 @@ export class PrincipalDialogue {
     if (!node || !choice || !this.nodes.has(choice.next)) return false;
     // Choosing at the commitment step is the required resolution; closing at
     // the introduction or before acknowledging leaves the referral open.
-    if (this.currentId === "commit") this.resolved = true;
+    if (this.currentId === "commit") {
+      this.resolved = true;
+      if (choice.next === "resume-bunk") this.bunkOutcome = "resume";
+      if (choice.next === "end-bunk") this.bunkOutcome = "end";
+    }
     this.currentId = choice.next;
     return true;
   }

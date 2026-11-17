@@ -122,6 +122,118 @@ const SUBJECT_QUESTIONS: Record<
       explanation: "Exactly. Every choice has a cost beyond the money you hand over.",
     },
   ],
+  bobo: [
+    {
+      question: "Which imaginary line divides the Earth into the Northern and Southern Hemispheres?",
+      correct: "The Equator, sir.",
+      wrong: ["The Prime Meridian, sir.", "The Tropic of Cancer, sir.", "The Arctic Circle, sir."],
+      explanation: "The Equator. If you forget that, every map becomes guesswork.",
+    },
+    {
+      question: "What do we call the layer of the atmosphere where weather happens?",
+      correct: "The troposphere, sir.",
+      wrong: ["The stratosphere, sir.", "The mesosphere, sir.", "The ionosphere, sir."],
+      explanation: "Troposphere. Clouds, rain, and your excuses all live in the same layer.",
+    },
+  ],
+  uma: [
+    {
+      question: "If a circle has a radius of seven centimetres, what is its circumference? Use twenty-two over seven for pi.",
+      correct: "Forty-four centimetres, ma'am.",
+      wrong: ["Twenty-two centimetres, ma'am.", "Thirty-eight centimetres, ma'am.", "Forty-nine centimetres, ma'am."],
+      explanation: "Forty-four. The formula was not optional the first time either.",
+    },
+    {
+      question: "What is the sum of the interior angles of a triangle?",
+      correct: "One hundred and eighty degrees, ma'am.",
+      wrong: ["Ninety degrees, ma'am.", "Two hundred and seventy degrees, ma'am.", "Three hundred and sixty degrees, ma'am."],
+      explanation: "One hundred and eighty. Remember it before you are asked a second time.",
+    },
+  ],
+  sarjubala: [
+    {
+      question: "In Manipuri classical dance, what is the gentle, rounded walk called?",
+      correct: "Chali, ma'am.",
+      wrong: ["Tandava, ma'am.", "Jhumur, ma'am.", "Gat, ma'am."],
+      explanation: "Yes, chali. A calm walk says as much as a fast one — perhaps more.",
+    },
+    {
+      question: "Which Manipuri dance form tells the story of Radha and Krishna?",
+      correct: "Ras Leela, ma'am.",
+      wrong: ["Lai Haraoba, ma'am.", "Pung Cholom, ma'am.", "Thang-Ta, ma'am."],
+      explanation: "Ras Leela. There is a whole world in it, not just a performance.",
+    },
+  ],
+  birjit: [
+    {
+      question: "In a library, what does the call number on a book spine help you find?",
+      correct: "Its exact shelf position, sir.",
+      wrong: ["Its price, sir.", "Its publisher, sir.", "Its borrowing history, sir."],
+      explanation: "Its shelf position. A library without order is just a room full of paper.",
+    },
+    {
+      question: "What should you do with a book you have finished reading in the library?",
+      correct: "Return it to its proper place, sir.",
+      wrong: ["Leave it on the table, sir.", "Give it to another student, sir.", "Keep it for the next period, sir."],
+      explanation: "Its proper place. Someone else needs it to be there.",
+    },
+  ],
+  lokeshori: [
+    {
+      question: "How many players are on a basketball court per team at one time?",
+      correct: "Five, ma'am.",
+      wrong: ["Six, ma'am.", "Seven, ma'am.", "Four, ma'am."],
+      explanation: "Five. Now imagine running the drill and counting at the same time.",
+    },
+    {
+      question: "Which activity best builds cardiovascular endurance?",
+      correct: "Distance running, ma'am.",
+      wrong: ["A static stretch, ma'am.", "A one-rep lift, ma'am.", "A balance hold, ma'am."],
+      explanation: "Distance running. There is no shortcut worth pretending about.",
+    },
+  ],
+  ene: [
+    {
+      question: "The mess is short of clean trays. What do you do after your meal?",
+      correct: "Take my tray to the washing point, ma'am.",
+      wrong: ["Leave it on the table, ma'am.", "Pass it to a friend, ma'am.", "Stack it under the bench, ma'am."],
+      explanation: "Perfect. The kitchen is not a magical place where trays clean themselves.",
+    },
+    {
+      question: "Why should you not waste food at the mess?",
+      correct: "Because it is everyone's share, ma'am.",
+      wrong: ["Because the plates are heavy, ma'am.", "Because it makes the table untidy, ma'am.", "Because the bell will ring, ma'am."],
+      explanation: "Exactly. Take what you will eat; come back if you are still hungry.",
+    },
+  ],
+  sanathoi: [
+    {
+      question: "What is the correct order at the mess counter?",
+      correct: "Join the queue and wait my turn, sir.",
+      wrong: ["Call the loudest, sir.", "Send a friend ahead, sir.", "Take the first plate I see, sir."],
+      explanation: "A queue. Remarkably quick when everyone remembers it exists.",
+    },
+    {
+      question: "The dal is finished and the line is long. What is the sensible answer?",
+      correct: "Tell the server politely and take what is available, sir.",
+      wrong: ["Argue with the server, sir.", "Skip the meal entirely, sir.", "Take someone else's plate, sir."],
+      explanation: "Polite and practical. The kitchen notices manners, believe me.",
+    },
+  ],
+  local: [
+    {
+      question: "Whose job is it to keep the field and gate area tidy?",
+      correct: "The whole campus shares it, sir — I help.",
+      wrong: ["Only the students, sir.", "Only the MTS staff, sir.", "Nobody's, sir."],
+      explanation: "Shared. I sweep it; you avoid dropping it. Simple arrangement.",
+    },
+    {
+      question: "A gate is left open after hours. What is the first thing you do?",
+      correct: "Tell the staff on duty, sir.",
+      wrong: ["Close it and say nothing, sir.", "Ignore it, sir.", "Wait for someone else, sir."],
+      explanation: "Report it. Quiet fixes are how bigger problems begin.",
+    },
+  ],
 };
 
 /**

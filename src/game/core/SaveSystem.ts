@@ -15,6 +15,13 @@ import { DEFAULT_CHARACTER_ID, DEFAULT_HOUSE_ID, isHouseId } from "../data/house
 import { GARDEN_ITEM_IDS, NIGHT_TOTAL_STEPS, isGardenItemId } from "../data/night";
 import { newPlayerProfile } from "../data/profile";
 import { emptyEscapeSave, sanitizeEscape } from "../data/escape";
+import {
+  CLASS_BUNK_OBJECTIVES,
+  emptyClassBunkSave,
+  isClassBunkDifficulty,
+  type ClassBunkSave,
+} from "../data/classBunk";
+import { isTeacherId } from "../data/teachers";
 import { getStudent, validateCharacterSelection } from "../data/students";
 import { sanitizeExploration } from "../systems/ExplorationSystem";
 import { emptyPrincipalReferral } from "../systems/PrincipalReferralSystem";
@@ -116,6 +123,53 @@ function sanitizePrincipalReferral(raw: unknown): PrincipalReferralSave {
       source.completedAt == null
         ? null
         : clamp(num(source.completedAt, 0), 0, 8_640_000_000_000_000),
+  };
+}
+
+function sanitizeClassBunk(raw: unknown): ClassBunkSave {
+  const fallback = emptyClassBunkSave();
+  if (!raw || typeof raw !== "object") return fallback;
+  const source = raw as Partial<ClassBunkSave>;
+  const difficulty = isClassBunkDifficulty(source.difficulty) ? source.difficulty : "normal";
+  const objectiveIds = Array.isArray(source.objectiveIds)
+    ? Array.from(
+        new Set(
+          source.objectiveIds.filter((id): id is string =>
+            CLASS_BUNK_OBJECTIVES.some((objective) => objective.id === id),
+          ),
+        ),
+      )
+    : [];
+  const completedIds = Array.isArray(source.completedIds)
+    ? Array.from(
+        new Set(source.completedIds.filter((id): id is string => objectiveIds.includes(id))),
+      )
+    : [];
+  const status =
+    source.status === "return" ||
+    source.status === "caught" ||
+    source.status === "completed" ||
+    source.status === "failed" ||
+    source.status === "ended"
+      ? source.status
+      : "exploring";
+  const active =
+    source.active === true &&
+    objectiveIds.length > 0 &&
+    status !== "completed" &&
+    status !== "failed" &&
+    status !== "ended";
+  return {
+    active,
+    difficulty,
+    objectiveIds: active ? objectiveIds : [],
+    completedIds: active ? completedIds : [],
+    remaining: active ? clamp(Math.round(num(source.remaining, 0)), 1, 600) : 0,
+    suspicion: active ? clamp(Math.round(num(source.suspicion, 0)), 0, 99) : 0,
+    status: active ? status : source.status === "completed" ? "completed" : source.status === "failed" ? "failed" : "ended",
+    caughtBy: active && isTeacherId(source.caughtBy) ? source.caughtBy : null,
+    completedOnce: source.completedOnce === true || (!active && status === "completed"),
+    resultSeen: source.resultSeen !== false,
   };
 }
 
@@ -249,6 +303,7 @@ function sanitizeSave(raw: unknown): SaveData | null {
         : sanitizeEscape(source.escape, profile.playerId),
     teachers: sanitizeTeachers(source.teachers),
     principalReferral: sanitizePrincipalReferral(source.principalReferral),
+    classBunk: sanitizeClassBunk(source.classBunk),
   };
 }
 

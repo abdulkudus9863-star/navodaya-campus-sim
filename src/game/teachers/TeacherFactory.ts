@@ -22,14 +22,14 @@ export function createTeacherRig(config: TeacherConfig, spawn: TeacherRoutePoint
     uniform: config.appearance.accents,
     skin: config.appearance.skin,
     detail: "low",
-    face: config.id === "dinesh" ? "square" : config.id === "sushil" ? "oval" : "round",
-    hairStyle: config.id === "sushil" ? "side" : "short",
+    face: config.appearance.face ?? "round",
+    hairStyle: config.appearance.hairStyle ?? "short",
     hairColor: "black",
     eyeColor: "dark",
     brows: config.personality === "strict" ? "bold" : "straight",
     build: config.appearance.build,
     glasses: config.appearance.glasses ? "round" : "none",
-    watch: config.id === "rahul" ? "steel" : "none",
+    watch: config.appearance.watch ?? (config.id === "rahul" ? "steel" : "none"),
   });
 
   rig.group.name = `teacher-${config.id}`;
@@ -50,11 +50,12 @@ export function createTeacherRig(config: TeacherConfig, spawn: TeacherRoutePoint
   rig.parts.trouserMaterial.color.set(config.appearance.trousers);
   rig.parts.badgeMaterial.color.set(config.appearance.accents);
   rig.parts.hairMaterials.forEach((material) => material.color.set(config.appearance.hair));
-  rig.parts.hairGroups.short.visible = true;
-  rig.parts.hairGroups.side.visible = config.id === "sushil";
-  rig.parts.hairGroups.curly.visible = false;
-  rig.parts.hairGroups.bun.visible = false;
-  rig.parts.hairGroups.braid.visible = false;
+  const hairStyle = config.appearance.hairStyle ?? "short";
+  rig.parts.hairGroups.short.visible = hairStyle === "short";
+  rig.parts.hairGroups.side.visible = hairStyle === "side";
+  rig.parts.hairGroups.curly.visible = hairStyle === "curly";
+  rig.parts.hairGroups.bun.visible = hairStyle === "bun";
+  rig.parts.hairGroups.braid.visible = hairStyle === "braid";
   rig.parts.glassesRound.visible = config.appearance.glasses;
   rig.parts.glassesRect.visible = false;
 
@@ -107,8 +108,32 @@ export function createTeacherRig(config: TeacherConfig, spawn: TeacherRoutePoint
     rig.torso.add(bead);
   }
 
-  // Staff lanyard pocket and a subtle age line at the temples.
-  if (config.id === "rahul" || config.id === "sushil") {
+  if (config.appearance.apron) {
+    const apron = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.44, 0.022), standard("#e7e1d3", 0.92));
+    apron.position.set(0, -0.03, 0.146);
+    rig.torso.add(apron);
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.033, 0.22, 0.012), standard("#d4cbba", 0.92));
+    strap.position.set(0.08, 0.28, 0.13);
+    strap.rotation.z = -0.16;
+    rig.torso.add(strap);
+    const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.075, 0.012), standard("#cfc6b3", 0.94));
+    pocket.position.set(0, -0.08, 0.16);
+    rig.torso.add(pocket);
+  }
+  if (config.appearance.cap) {
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.185, 0.2, 0.085, 16), standard("#2c342b", 0.9));
+    cap.position.set(0, 0.235, 0);
+    rig.head.add(cap);
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.29, 0.022, 0.15), standard("#222a22", 0.9));
+    brim.position.set(0, 0.198, 0.12);
+    rig.head.add(brim);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.202, 0.202, 0.024, 16), accents);
+    band.position.set(0, 0.205, 0);
+    rig.head.add(band);
+  }
+
+  // Staff pocket detail keeps the adult shirts from reading as blank panels.
+  if (config.appearance.lanyard || config.id === "rahul" || config.id === "sushil") {
     const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.01, 0.006), skin);
     pocket.position.set(0.09, 0.02, 0.133);
     rig.torso.add(pocket);

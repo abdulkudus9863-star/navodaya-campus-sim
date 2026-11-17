@@ -326,11 +326,19 @@ export interface MapMissionTarget {
   z: number;
 }
 
+export interface MapTeacherMarker {
+  id: string;
+  name: string;
+  x: number;
+  z: number;
+}
+
 export interface LiveMapSnapshot {
   playerX: number;
   playerZ: number;
   rotationY: number;
   remotes: MapRemoteMarker[];
+  teachers: MapTeacherMarker[];
 }
 
 /** Single-player mission objectives, using the same coordinates as the 3D scene. */

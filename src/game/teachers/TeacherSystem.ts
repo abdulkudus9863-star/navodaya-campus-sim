@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { DisciplineView, DialogueView, PlayerProfileSave, TeacherSave } from "../core/types";
-import type { TeacherId } from "../data/teachers";
+import { TEACHER_IDS, type TeacherId } from "../data/teachers";
 import type { WorldEnvironment } from "../world/WorldEnvironment";
 import { collidesAt } from "../systems/PlayerController";
 import { TeacherDialogueManager } from "./TeacherDialogueManager";
@@ -23,7 +23,7 @@ export interface TeacherSystemContext {
 }
 
 /**
- * Owns the three teacher controllers, detection gating, shared memory, the
+ * Owns every teacher controller, detection gating, shared memory, the
  * timetable and the one active conversation. It is deliberately a scene-level
  * system, not a parallel mini-game, so the normal camera, colliders, HUD and
  * mobile controls all keep working around it.
@@ -38,8 +38,12 @@ export class TeacherSystem {
   private personality = new TeacherPersonalityManager();
   private dialogue: TeacherDialogueManager;
   private world: WorldEnvironment;
-  private lastLoops: Record<TeacherId, number> = { dinesh: 0, sushil: 0, rahul: 0 };
-  private farUpdate: Record<TeacherId, number> = { dinesh: 0, sushil: 0, rahul: 0 };
+  private lastLoops: Record<TeacherId, number> = Object.fromEntries(
+    TEACHER_IDS.map((id) => [id, 0]),
+  ) as Record<TeacherId, number>;
+  private farUpdate: Record<TeacherId, number> = Object.fromEntries(
+    TEACHER_IDS.map((id) => [id, 0]),
+  ) as Record<TeacherId, number>;
   private active: TeacherId | null = null;
   private lastArea = "the campus";
   private lastViolation = false;
@@ -132,6 +136,18 @@ export class TeacherSystem {
 
   setTimetablePhase(phase: SchoolTime["phase"] | null): void {
     this.timetable.setPinned(phase);
+  }
+
+  /** CLASS BUNK difficulty selects who is actually on patrol. */
+  setActiveSubset(ids: readonly TeacherId[] | null): void {
+    const allowed = ids ? new Set<TeacherId>(ids) : null;
+    for (const controller of this.controllers.values()) {
+      const active = !allowed || allowed.has(controller.id);
+      controller.rig.group.visible = active;
+      controller.interactable.active = active;
+      controller.rig.indicator.visible = false;
+    }
+    this.group.visible = this.enabled;
   }
 
   setEnabled(enabled: boolean): void {
@@ -352,16 +368,12 @@ export class TeacherSystem {
       },
       reputation: this.memory.reputation,
       reputationLabel: this.memory.reputationLabel(),
-      warnings: {
-        dinesh: this.memory.warningsFor("dinesh"),
-        sushil: this.memory.warningsFor("sushil"),
-        rahul: this.memory.warningsFor("rahul"),
-      },
-      cooldowns: {
-        dinesh: this.memory.cooldownRemaining("dinesh"),
-        sushil: this.memory.cooldownRemaining("sushil"),
-        rahul: this.memory.cooldownRemaining("rahul"),
-      },
+      warnings: Object.fromEntries(
+        TEACHER_IDS.map((id) => [id, this.memory.warningsFor(id)]),
+      ),
+      cooldowns: Object.fromEntries(
+        TEACHER_IDS.map((id) => [id, this.memory.cooldownRemaining(id)]),
+      ),
       discipline: this.disciplineView(),
       teachers: this.allTeachers().map((teacher) => teacher.snapshot()),
       dialogue: this.active ? this.dialogue.currentView() : null,

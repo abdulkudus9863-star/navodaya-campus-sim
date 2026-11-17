@@ -26,9 +26,16 @@ import { NightMissionSystem } from "../systems/NightMissionSystem";
 import { ExplorationSystem } from "../systems/ExplorationSystem";
 import { NPCSystem } from "../systems/NPCSystem";
 import { TeacherSystem } from "../teachers/TeacherSystem";
-import { emptyTeacherSave, type TeacherId } from "../data/teachers";
+import { emptyTeacherSave, isTeacherId, type TeacherId } from "../data/teachers";
 import { PrincipalReferralSystem } from "../systems/PrincipalReferralSystem";
 import { PrincipalDialogue } from "../systems/PrincipalDialogue";
+import { ClassBunkSystem } from "../systems/ClassBunkSystem";
+import {
+  CLASS_BUNK_CAUGHT_LINE,
+  CLASS_BUNK_DIFFICULTIES,
+  isClassBunkDifficulty,
+  type ClassBunkDifficulty,
+} from "../data/classBunk";
 import { PRINCIPAL } from "../data/principal";
 import { PlayerController, collidesAt } from "../systems/PlayerController";
 import { WorldEnvironment, type WorldZone } from "../world/WorldEnvironment";
@@ -112,6 +119,10 @@ export class GameEngine {
   private principalReferral: PrincipalReferralSystem | null = null;
   private principalDialogue = new PrincipalDialogue();
   private principalReferralTimer = 0;
+  private classBunk = new ClassBunkSystem();
+  private classBunkHudTimer = 0;
+  private classBunkCompleted = 0;
+  private bunkPrincipalAutoOpened = false;
   private mission = new MissionSystem();
   private night = new NightMissionSystem();
   private exploration = new ExplorationSystem();
@@ -127,7 +138,14 @@ export class GameEngine {
   private nightHudTimer = 0;
   private disciplineHudTimer = 0;
   private crouching = false;
-  private dialogueSource: "meera" | "night" | "caught" | "teacher" | "principal" | null = null;
+  private dialogueSource:
+    | "meera"
+    | "night"
+    | "caught"
+    | "teacher"
+    | "principal"
+    | "bunk-caught"
+    | null = null;
   private teacherDialogueId: TeacherId | null = null;
   private lastDiscipline: DisciplineView | null = null;
   private dialogueAnchor = new THREE.Vector3();
@@ -464,7 +482,7 @@ export class GameEngine {
           return engine.teachers?.playerIdentity(engine.profile) ?? null;
         },
         clearCooldown(id: string) {
-          if (id !== "dinesh" && id !== "sushil" && id !== "rahul") return false;
+          if (!isTeacherId(id)) return false;
           engine.teachers?.clearCooldown(id);
           return true;
         },
@@ -472,14 +490,12 @@ export class GameEngine {
           return engine.teachers?.simulatePatrol(seconds) ?? null;
         },
         seedMemory(id: string, input: Record<string, unknown>) {
-          if (id !== "dinesh" && id !== "sushil" && id !== "rahul") return false;
+          if (!isTeacherId(id)) return false;
           engine.teachers?.seedMemory(id, input);
           return true;
         },
         configure(id: string, patch: Record<string, unknown>) {
-          if (!engine.teachers || (id !== "dinesh" && id !== "sushil" && id !== "rahul")) {
-            return false;
-          }
+          if (!engine.teachers || !isTeacherId(id)) return false;
           return engine.teachers.configure(id, patch);
         },
         setPhase(phase: string | null) {
@@ -584,6 +600,32 @@ export class GameEngine {
           return engine.store.getState().screen;
         },
       },
+      classBunk: {
+        start(difficulty = "normal") {
+          if (!isClassBunkDifficulty(difficulty)) return false;
+          return engine.startClassBunk(difficulty);
+        },
+        snapshot() {
+          return engine.classBunk.view();
+        },
+        teleport(id: string) {
+          const objective = engine.classBunk.view().objectives.find((entry) => entry.id === id);
+          if (!objective) return false;
+          engine.player.placeAt(new THREE.Vector3(objective.x, 0, objective.z), 0);
+          engine.cameraController.resetToPlayer(engine.player.position, 0);
+          return true;
+        },
+        forceCatch(id = "dinesh") {
+          if (!isTeacherId(id)) return false;
+          const teacher = engine.teachers?.teacher(id);
+          engine.classBunk.markCaught(id, teacher?.config.name ?? "A teacher");
+          engine.handleClassBunkCaught(id);
+          return true;
+        },
+        dismiss() {
+          engine.dismissClassBunk();
+        },
+      },
       roster() {
         return {
           count: STUDENT_ROSTER.length,
@@ -622,6 +664,7 @@ export class GameEngine {
     this.nightMode = false;
     this.cancelGardenDuty(false);
     this.night = new NightMissionSystem();
+    this.classBunk = new ClassBunkSystem();
     this.nightCaughtHandled = false;
     this.suspicion = 0;
     this.escapeData = null;
@@ -642,6 +685,7 @@ export class GameEngine {
       nightResult: null,
       gardenDuty: null,
       principalReferral: null,
+      classBunk: null,
       escapeSave: null,
     });
     this.input.setEnabled(false);
@@ -674,6 +718,7 @@ export class GameEngine {
     this.escapeData = emptyEscapeSave(profile.playerId);
     const view = toProfileView(profile);
     this.night = new NightMissionSystem();
+    this.classBunk = new ClassBunkSystem();
     this.exploration.reset();
     this.nightMode = false;
     this.cancelGardenDuty(false);
@@ -705,6 +750,7 @@ export class GameEngine {
       crouching: false,
       gardenDuty: null,
       principalReferral: null,
+      classBunk: null,
       exploration: this.explorationView(),
       planOpen: false,
       campusMapOpen: false,
@@ -766,10 +812,15 @@ export class GameEngine {
     this.store.setMission(this.mission.view());
     this.playtime = data.playtime;
     this.night.restore(data.night);
+    this.classBunk = new ClassBunkSystem(data.classBunk);
     this.exploration.restore(data.exploration);
     this.teachers?.reset(data.teachers);
     this.principalReferral?.restore(data.principalReferral, restoredPosition);
     this.principalDialogue.end();
+    if (this.classBunk.isActive) {
+      this.teachers?.setActiveSubset(this.classBunk.teacherIds);
+      this.teachers?.setTimetablePhase("class");
+    }
     this.syncDisciplineHud(true);
     this.cancelGardenDuty(false);
     this.nightCaughtHandled = false;
@@ -800,6 +851,7 @@ export class GameEngine {
       principalReferral: this.principalReferral?.isActive
         ? this.principalReferral.view(restoredPosition)
         : null,
+      classBunk: this.classBunk.isActive ? this.classBunk.view() : null,
       planOpen: false,
       campusMapOpen: false,
       campusMap: null,
@@ -1009,6 +1061,19 @@ export class GameEngine {
       playerZ: this.player.position.z,
       rotationY: this.player.rotationY,
       remotes: this.multiplayer?.layer.markers() ?? [],
+      teachers:
+        this.teachers?.allTeachers().flatMap((teacher) =>
+          teacher.rig.group.visible
+            ? [
+                {
+                  id: teacher.id,
+                  name: teacher.config.name,
+                  x: teacher.position.x,
+                  z: teacher.position.z,
+                },
+              ]
+            : [],
+        ) ?? [],
     };
   }
 
@@ -1175,6 +1240,10 @@ export class GameEngine {
   }
 
   openEscape(): boolean {
+    if (this.classBunk.isActive) {
+      this.showToast("Finish or abandon CLASS BUNK before opening the obstacle course.");
+      return false;
+    }
     if (!this.profile) return false;
     const data = this.escapeState();
     const state = this.store.getState();
@@ -1668,6 +1737,7 @@ export class GameEngine {
         assignedAt: 0,
         completedAt: null,
       },
+      classBunk: this.classBunk.toSave(),
     };
     const ok = this.saveSystem.save(data);
     if (ok) {
@@ -1689,6 +1759,7 @@ export class GameEngine {
     this.escapeData = null;
     this.teachers?.reset();
     this.principalReferral?.reset();
+    this.classBunk = new ClassBunkSystem();
     this.principalDialogue.end();
     this.lastDiscipline = null;
     this.nightMode = false;
@@ -1711,6 +1782,7 @@ export class GameEngine {
       nightResult: null,
       gardenDuty: null,
       principalReferral: null,
+      classBunk: null,
       exploration: null,
       planOpen: false,
       campusMapOpen: false,
@@ -1783,9 +1855,197 @@ export class GameEngine {
     this.audio.uiClick();
   }
 
+  startClassBunk(difficulty: ClassBunkDifficulty = "normal"): boolean {
+    if (!this.profile) return false;
+    if (!isClassBunkDifficulty(difficulty)) return false;
+    if (this.classBunk.isActive) {
+      this.showToast("You are already in the middle of a class bunk. Finish it or abandon it from the pause menu.");
+      return false;
+    }
+    if (this.nightMode && this.night.active) {
+      this.showToast("Finish or leave the midnight caper before skipping class.");
+      return false;
+    }
+    if (this.principalReferral?.isActive) {
+      this.showToast("Report to the Principal's Chamber before starting another caper.");
+      return false;
+    }
+    void this.audio.unlock();
+    this.cancelGardenDuty(false);
+    this.classBunk.start(difficulty);
+    this.classBunkCompleted = 0;
+    this.classBunkHudTimer = 0;
+    this.bunkPrincipalAutoOpened = false;
+    this.nightMode = false;
+    this.nightCaughtHandled = false;
+    this.suspicion = 0;
+    this.setCrouching(false);
+    this.world.setNight(false);
+    this.audio.setNight(false);
+    this.applyAtmosphere(false);
+    this.world.setGardenInteractablesActive(false);
+    this.teachers?.setEnabled(true);
+    this.teachers?.setActiveSubset(this.classBunk.teacherIds);
+    this.teachers?.setTimetablePhase("class");
+    const start = this.classBunk.startPoint;
+    const point = new THREE.Vector3(start.x, 0, start.z);
+    this.player.placeAt(point, start.rotation);
+    this.cameraController.resetToPlayer(point, start.rotation);
+    this.world.showMarker(null, true);
+    this.world.hideMarker();
+    for (const door of this.world.doors) door.setOpenInstant(false);
+    this.world.doors.find((door) => door.label === "classroom")?.setOpenInstant(true);
+    this.store.patch({
+      screen: "playing",
+      settingsOpen: false,
+      profileOpen: false,
+      dialogue: null,
+      notice: null,
+      ending: null,
+      prompt: null,
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
+      cameraOverview: false,
+      night: null,
+      nightResult: null,
+      gardenDuty: null,
+      discipline: null,
+      principalReferral: null,
+      crouching: false,
+      classBunk: this.classBunk.view(),
+    });
+    this.input.reset();
+    this.input.setEnabled(true);
+    this.requestPointerLock();
+    this.saveGame(false);
+    this.audio.chime();
+    this.showToast(
+      `${CLASS_BUNK_DIFFICULTIES[difficulty].label} CLASS BUNK. Room 101 is behind you; the bell is already counting.`,
+    );
+    return true;
+  }
+
+  dismissClassBunk(): void {
+    const view = this.classBunk.view();
+    if (!view.result) return;
+    this.classBunk.dismissResult();
+    this.teachers?.setActiveSubset(null);
+    this.teachers?.setTimetablePhase(null);
+    this.store.patch({ classBunk: null, principalReferral: this.principalReferral?.isActive ? this.principalReferral.view(this.player.position) : null });
+    this.saveGame(false);
+    this.audio.uiClick();
+  }
+
+  abandonClassBunk(): boolean {
+    if (!this.classBunk.isActive) return false;
+    this.classBunk.finish("ended");
+    this.teachers?.setActiveSubset(null);
+    this.teachers?.setTimetablePhase(null);
+    this.store.patch({ classBunk: this.classBunk.view() });
+    this.saveGame(false);
+    this.audio.uiClick();
+    return true;
+  }
+
+  private handleClassBunkCaught(teacherId: TeacherId): void {
+    const teacher = this.teachers?.teacher(teacherId);
+    const name = teacher?.config.name ?? "A teacher";
+    const player = this.player.position;
+    if (this.principalReferral && !this.principalReferral.isActive) {
+      this.principalReferral.assign({
+        teacherId,
+        teacherName: name,
+        reason: "Skipping class and wandering the campus without a pass",
+        player,
+        now: this.elapsed * 1000,
+      });
+      this.principalReferral.update(player, 0);
+    }
+    this.input.setEnabled(false);
+    this.input.reset();
+    this.store.setPrompt(null);
+    this.releasePointerLock();
+    this.dialogueSource = "bunk-caught";
+    this.bunkPrincipalAutoOpened = false;
+    this.teacherDialogueId = teacherId;
+    if (teacher) this.dialogueAnchor.copy(teacher.position);
+    this.store.setDialogue({
+      speaker: name,
+      role: `${teacher?.config.subject ?? "Staff"} · Navodaya Vidyalaya`,
+      text: CLASS_BUNK_CAUGHT_LINE,
+      choices: [],
+      canAdvance: true,
+    });
+    this.store.patch({
+      screen: "dialogue",
+      classBunk: this.classBunk.view(),
+      principalReferral: this.principalReferral?.view(player) ?? null,
+    });
+    this.audio.chime();
+    this.showToast("Caught out of class. Follow the highlighted route to the Principal's Chamber.");
+  }
+
+  private updateClassBunk(dt: number): void {
+    if (!this.classBunk.isActive) return;
+    const view = this.classBunk.view();
+    if (view.status === "caught" || view.result) return;
+    const teachers = this.classBunk.teacherIds.flatMap((id) => {
+      const controller = this.teachers?.teacher(id);
+      if (!controller || !controller.rig.group.visible) return [];
+      return [
+        {
+          id,
+          name: controller.config.name,
+          x: controller.position.x,
+          z: controller.position.z,
+          rotation: controller.rotation,
+          detectionRadius: controller.config.detectionRadius,
+          lineOfSight: this.world.hasLineOfSight(
+            controller.position.x,
+            controller.position.z,
+            this.player.position.x,
+            this.player.position.z,
+          ),
+        },
+      ];
+    });
+    const caughtBy = this.classBunk.update({
+      playerX: this.player.position.x,
+      playerZ: this.player.position.z,
+      crouching: this.crouching,
+      dt,
+      teachers,
+    });
+    if (caughtBy) {
+      this.handleClassBunkCaught(caughtBy);
+      return;
+    }
+    const next = this.classBunk.view();
+    if (next.completed > this.classBunkCompleted) {
+      this.classBunkCompleted = next.completed;
+      this.showToast(
+        next.status === "return"
+          ? "Every stop covered. Get back to Room 101 before the bell."
+          : `Stop cleared · ${next.completed}/${next.total}. Keep moving.`,
+      );
+      this.audio.chime();
+    }
+    this.classBunkHudTimer += dt;
+    if (this.classBunkHudTimer >= 0.2 || next.status !== view.status || next.result) {
+      this.classBunkHudTimer = 0;
+      this.store.patch({ classBunk: next });
+      if (next.result) this.saveGame(false);
+    }
+  }
+
   startNight(): boolean {
     if (!this.profile) return false;
     if (this.night.active) return false;
+    if (this.classBunk.isActive) {
+      this.showToast("Finish or leave CLASS BUNK before starting another caper.");
+      return false;
+    }
     const house = getHouse(this.profile.houseId);
     const hostel = this.world.houseHostels[this.profile.houseId];
     if (!house || !hostel) return false;
@@ -1872,6 +2132,10 @@ export class GameEngine {
 
   startGardenDuty(): boolean {
     if (!this.profile) return false;
+    if (this.classBunk.isActive) {
+      this.showToast("Finish or abandon CLASS BUNK before taking on garden duty.");
+      return false;
+    }
     if (!this.profile.achievements.includes("caught-in-the-act")) {
       this.showToast("Mr. Barua only assigns garden duty after a certain midnight incident.");
       return false;
@@ -2475,6 +2739,7 @@ export class GameEngine {
         referralActive: Boolean(referral?.active),
         teacherName: referral?.teacherName ?? null,
         reason: referral?.reason ?? null,
+        bunkActive: this.classBunk.isActive && this.classBunk.view().status === "caught",
       }),
     );
     this.store.setScreen("dialogue");
@@ -2492,6 +2757,8 @@ export class GameEngine {
 
   private finishPrincipalDialogue(): void {
     const resolved = this.principalDialogue.isResolved;
+    const bunkOutcome = this.principalDialogue.classBunkOutcome;
+    const bunkCaught = this.classBunk.isActive && this.classBunk.view().status === "caught";
     this.principalDialogue.end();
     this.dialogueSource = null;
     this.store.setDialogue(null);
@@ -2499,6 +2766,19 @@ export class GameEngine {
     this.input.reset();
     this.input.setEnabled(true);
     if (resolved) this.completePrincipalReferral();
+    if (bunkCaught) {
+      this.bunkPrincipalAutoOpened = true;
+      if (bunkOutcome === "resume" || (resolved && bunkOutcome === null)) {
+        this.classBunk.resumeAfterCaught();
+        this.showToast("Back to the corridors. Your completed stops are still on record.");
+      } else if (bunkOutcome === "end") {
+        this.classBunk.endAfterCaught();
+        this.teachers?.setActiveSubset(null);
+        this.teachers?.setTimetablePhase(null);
+        this.showToast("Principal Moinm Rahman has ended the class bunk attempt.");
+      }
+      this.store.patch({ classBunk: this.classBunk.view() });
+    }
     this.saveGame(false);
     this.requestPointerLock();
   }
@@ -2512,6 +2792,20 @@ export class GameEngine {
     if (this.dialogueSource === "teacher") {
       this.teachers?.closeConversation();
       this.finishTeacherDialogue();
+      return;
+    }
+    if (this.dialogueSource === "bunk-caught") {
+      this.dialogueSource = null;
+      this.store.setDialogue(null);
+      this.store.patch({
+        screen: "playing",
+        classBunk: this.classBunk.view(),
+        principalReferral: this.principalReferral?.view(this.player.position) ?? null,
+      });
+      this.input.reset();
+      this.input.setEnabled(true);
+      this.saveGame(false);
+      this.requestPointerLock();
       return;
     }
     if (this.dialogueSource === "night" || this.dialogueSource === "caught") {
@@ -2871,6 +3165,7 @@ export class GameEngine {
           this.disciplineHudTimer = 0;
           this.syncDisciplineHud();
         }
+        this.updateClassBunk(dt);
       }
       if (!this.multiplayer && this.principalReferral?.isActive) {
         this.principalReferralTimer += dt;
@@ -2878,6 +3173,14 @@ export class GameEngine {
           this.principalReferralTimer = 0;
           this.principalReferral.update(this.player.position, this.elapsed);
           this.store.patch({ principalReferral: this.principalReferral.view(this.player.position) });
+        }
+        if (
+          !this.bunkPrincipalAutoOpened &&
+          this.classBunk.view().status === "caught" &&
+          this.world.isInsidePrincipalChamber(this.player.position)
+        ) {
+          this.bunkPrincipalAutoOpened = true;
+          this.openPrincipalDialogue();
         }
       }
 
