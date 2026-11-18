@@ -27,9 +27,10 @@ export function MiniMap({
   onClearWaypoint: () => void;
 }) {
   const snapshot = useLiveMap(engine, 100);
-  const canExpand = !multiplayer && !state.night?.active;
+  const mess = state.messMeal?.active ? state.messMeal : null;
+  const canExpand = !multiplayer && !state.night?.active && !mess;
   const referral = state.principalReferral?.active ? state.principalReferral : null;
-  const mission = state.profile && !referral
+  const mission = state.profile && !referral && !mess
     ? multiplayer || (!state.night?.active && !state.mission.done)
       ? missionTargetFor(state.mission.step, state.profile.houseId, multiplayer)
       : null
@@ -54,6 +55,15 @@ export function MiniMap({
   const bunkLine = bunkTarget && player && !referral
     ? { x1: player.x, y1: player.y, x2: bunkTargetPoint!.x, y2: bunkTargetPoint!.y }
     : null;
+  const messTarget = mess?.target ?? null;
+  const messTargetPoint = messTarget ? worldToMap(messTarget.x, messTarget.z) : null;
+  const messLine = messTarget && player && !referral
+    ? { x1: player.x, y1: player.y, x2: messTargetPoint!.x, y2: messTargetPoint!.y }
+    : null;
+  const messDistance =
+    snapshot && messTarget
+      ? mapWorldDistance(snapshot.playerX, snapshot.playerZ, messTarget.x, messTarget.z)
+      : null;
   const routeAhead = referralRoute[0] && player
     ? Math.atan2(referralRoute[0].x - player.x, -(referralRoute[0].y - player.y))
     : 0;
@@ -120,6 +130,36 @@ export function MiniMap({
           </svg>
         )}
 
+        {messLine && (
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="pointer-events-none absolute inset-0 z-10 size-full"
+            aria-hidden
+          >
+            <line
+              x1={messLine.x1}
+              y1={messLine.y1}
+              x2={messLine.x2}
+              y2={messLine.y2}
+              stroke="#071018"
+              strokeWidth="3.2"
+              strokeLinecap="round"
+              opacity="0.55"
+            />
+            <line
+              x1={messLine.x1}
+              y1={messLine.y1}
+              x2={messLine.x2}
+              y2={messLine.y2}
+              stroke="#9ed3ee"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeDasharray="3.5 2.5"
+            />
+          </svg>
+        )}
+
         {referral && !referral.insideChamber && referralRoute.length > 1 && (
           <svg
             viewBox="0 0 100 100"
@@ -162,6 +202,20 @@ export function MiniMap({
           </span>
         )}
 
+        {messTargetPoint && (
+          <span
+            data-testid="mess-minimap-target"
+            className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${messTargetPoint.x}%`, top: `${messTargetPoint.y}%` }}
+            title={messTarget?.label ?? "Mess meal objective"}
+          >
+            <span className="absolute left-1/2 top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full bg-[#9ed3ee]/20" />
+            <span className="relative flex size-3.5 items-center justify-center rounded-full border border-[#c6e8fb]/90 bg-[#1f4b60]/90 shadow-[0_0_0_3px_rgba(158,211,238,0.18)]">
+              <span className="size-1.5 rounded-full bg-[#d9f1ff]" />
+            </span>
+          </span>
+        )}
+
         {bunkTargetPoint && (
           <span
             data-testid="bunk-minimap-target"
@@ -200,12 +254,12 @@ export function MiniMap({
           </span>
         )}
 
-        {bunk && snapshot?.teachers.map((teacher) => {
+        {(bunk || mess) && snapshot?.teachers.map((teacher) => {
           const point = worldToMap(teacher.x, teacher.z);
           return (
             <span
               key={teacher.id}
-              data-testid="bunk-teacher-marker"
+              data-testid={mess ? "mess-teacher-marker" : "bunk-teacher-marker"}
               className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2"
               style={{ left: `${point.x}%`, top: `${point.y}%` }}
               title={`${teacher.name} · on patrol`}
@@ -278,6 +332,17 @@ export function MiniMap({
           <span className="shrink-0 text-[#e7c98f]/85">
             · {referral.insideChamber ? "Report in" : formatMapDistance(referral.distance)}
           </span>
+        </div>
+      )}
+
+      {mess && messTarget && !referral && messDistance !== null && (
+        <div
+          data-testid="mess-route-distance"
+          className="pointer-events-auto flex max-w-[11rem] items-center gap-1 border border-[#8fc7e8]/35 bg-[#071018]/92 px-2 py-1 font-ui text-[8px] uppercase tracking-[0.12em] text-[#d8efff]/85 shadow-[0_6px_18px_rgba(0,0,0,0.35)] backdrop-blur-sm sm:max-w-[14rem] sm:text-[9px]"
+        >
+          <Navigation className="size-2.5 shrink-0 text-[#9ed3ee]" />
+          <span className="truncate">{messTarget.label}</span>
+          <span className="shrink-0 text-[#9ed3ee]/90">· {formatMapDistance(messDistance)}</span>
         </div>
       )}
 

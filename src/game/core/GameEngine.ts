@@ -30,6 +30,14 @@ import { emptyTeacherSave, isTeacherId, type TeacherId } from "../data/teachers"
 import { PrincipalReferralSystem } from "../systems/PrincipalReferralSystem";
 import { PrincipalDialogue } from "../systems/PrincipalDialogue";
 import { ClassBunkSystem } from "../systems/ClassBunkSystem";
+import { MessMealSystem } from "../systems/MessMealSystem";
+import {
+  MESS_MEAL_CAUGHT_FOLLOW_UP,
+  MESS_MEAL_CAUGHT_LINE,
+  MESS_MEAL_DIFFICULTIES,
+  isMessMealDifficulty,
+  type MessMealDifficulty,
+} from "../data/messMeal";
 import {
   CLASS_BUNK_CAUGHT_LINE,
   CLASS_BUNK_DIFFICULTIES,
@@ -123,6 +131,13 @@ export class GameEngine {
   private classBunkHudTimer = 0;
   private classBunkCompleted = 0;
   private bunkPrincipalAutoOpened = false;
+  private messMeal = new MessMealSystem();
+  private messMealHudTimer = 0;
+  private messMealCompleted = 0;
+  private messPrincipalAutoOpened = false;
+  private messCaughtStage: "approach" | null = null;
+  private messCaughtTeacherId: TeacherId | null = null;
+  private messCaughtTimer = 0;
   private mission = new MissionSystem();
   private night = new NightMissionSystem();
   private exploration = new ExplorationSystem();
@@ -145,6 +160,7 @@ export class GameEngine {
     | "teacher"
     | "principal"
     | "bunk-caught"
+    | "mess-caught"
     | null = null;
   private teacherDialogueId: TeacherId | null = null;
   private lastDiscipline: DisciplineView | null = null;
@@ -626,6 +642,48 @@ export class GameEngine {
           engine.dismissClassBunk();
         },
       },
+      messMeal: {
+        start(difficulty = "normal") {
+          if (!isMessMealDifficulty(difficulty)) return false;
+          return engine.startMessMeal(difficulty);
+        },
+        snapshot() {
+          return engine.messMeal.view();
+        },
+        teleport(where = "next") {
+          const view = engine.messMeal.view();
+          const target =
+            where === "meal"
+              ? { x: -4, z: -42.2 }
+              : where === "hostel"
+                ? { x: engine.messMeal.targetPoint()?.x ?? -18, z: 36.8 }
+                : where === "principal"
+                  ? { x: 16.3, z: 44.45 }
+                  : view.target;
+          if (!target) return false;
+          engine.player.placeAt(new THREE.Vector3(target.x, 0, target.z), 0);
+          engine.cameraController.resetToPlayer(engine.player.position, 0);
+          return true;
+        },
+        forceCatch(id = "dinesh") {
+          if (!isTeacherId(id)) return false;
+          const teacher = engine.teachers?.teacher(id);
+          engine.messMeal.markCaught(id, teacher?.config.name ?? "A teacher");
+          engine.handleMessCaught(id);
+          return true;
+        },
+        finishApproach() {
+          engine.openMessCaughtDialogue();
+          return engine.store.getState().dialogue;
+        },
+        collect() {
+          engine.collectMessMeal();
+          return engine.messMeal.view();
+        },
+        dismiss() {
+          engine.dismissMessMeal();
+        },
+      },
       roster() {
         return {
           count: STUDENT_ROSTER.length,
@@ -665,6 +723,11 @@ export class GameEngine {
     this.cancelGardenDuty(false);
     this.night = new NightMissionSystem();
     this.classBunk = new ClassBunkSystem();
+    this.messMeal = new MessMealSystem();
+    this.messCaughtStage = null;
+    this.messCaughtTeacherId = null;
+    this.messCaughtTimer = 0;
+    this.messPrincipalAutoOpened = false;
     this.nightCaughtHandled = false;
     this.suspicion = 0;
     this.escapeData = null;
@@ -686,6 +749,7 @@ export class GameEngine {
       gardenDuty: null,
       principalReferral: null,
       classBunk: null,
+      messMeal: null,
       escapeSave: null,
     });
     this.input.setEnabled(false);
@@ -719,6 +783,11 @@ export class GameEngine {
     const view = toProfileView(profile);
     this.night = new NightMissionSystem();
     this.classBunk = new ClassBunkSystem();
+    this.messMeal = new MessMealSystem();
+    this.messCaughtStage = null;
+    this.messCaughtTeacherId = null;
+    this.messCaughtTimer = 0;
+    this.messPrincipalAutoOpened = false;
     this.exploration.reset();
     this.nightMode = false;
     this.cancelGardenDuty(false);
@@ -751,6 +820,7 @@ export class GameEngine {
       gardenDuty: null,
       principalReferral: null,
       classBunk: null,
+      messMeal: null,
       exploration: this.explorationView(),
       planOpen: false,
       campusMapOpen: false,
@@ -813,6 +883,19 @@ export class GameEngine {
     this.playtime = data.playtime;
     this.night.restore(data.night);
     this.classBunk = new ClassBunkSystem(data.classBunk);
+    this.messMeal = new MessMealSystem(data.messMeal);
+    this.messCaughtStage = null;
+    this.messCaughtTeacherId = null;
+    this.messCaughtTimer = 0;
+    this.messPrincipalAutoOpened = false;
+    const savedHostel = this.world.houseHostels[data.profile.houseId];
+    if (savedHostel) {
+      this.messMeal.setReturnPoint(
+        savedHostel.interiorPoint.x,
+        savedHostel.interiorPoint.z,
+        "your hostel",
+      );
+    }
     this.exploration.restore(data.exploration);
     this.teachers?.reset(data.teachers);
     this.principalReferral?.restore(data.principalReferral, restoredPosition);
@@ -820,6 +903,10 @@ export class GameEngine {
     if (this.classBunk.isActive) {
       this.teachers?.setActiveSubset(this.classBunk.teacherIds);
       this.teachers?.setTimetablePhase("class");
+    } else if (this.messMeal.isActive) {
+      this.teachers?.setActiveSubset(this.messMeal.teacherIds);
+      this.teachers?.setSpeedScale(this.messMeal.teacherSpeed);
+      this.teachers?.setTimetablePhase("hostel");
     }
     this.syncDisciplineHud(true);
     this.cancelGardenDuty(false);
@@ -827,9 +914,15 @@ export class GameEngine {
     this.suspicion = 0;
     this.setCrouching(false);
     this.nightMode = data.night.active;
-    this.audio.setNight(this.nightMode);
-    this.world.setNight(this.nightMode);
-    this.applyAtmosphere(this.nightMode);
+    const messNight = this.messMeal.isActive || Boolean(this.messMeal.view().result);
+    this.audio.setNight(this.nightMode || messNight);
+    this.world.setNight(this.nightMode || messNight);
+    this.applyAtmosphere(this.nightMode || messNight);
+    this.world.setGardenInteractablesActive(this.nightMode);
+    this.world.setMealInteractableActive(
+      this.messMeal.isActive && this.messMeal.status === "to-mess" && !this.messMeal.mealCollected,
+    );
+    if (this.messMeal.view().status === "completed") this.world.setRoommateCelebration(true);
     for (const door of this.world.doors) door.setOpenInstant(false);
     if (insideZone(this.world.zones.classroom, restoredPosition)) {
       this.world.doors.find((door) => door.label === "classroom")?.setOpenInstant(true);
@@ -852,6 +945,8 @@ export class GameEngine {
         ? this.principalReferral.view(restoredPosition)
         : null,
       classBunk: this.classBunk.isActive ? this.classBunk.view() : null,
+      messMeal:
+        this.messMeal.isActive || this.messMeal.view().result ? this.messMeal.view() : null,
       planOpen: false,
       campusMapOpen: false,
       campusMap: null,
@@ -863,6 +958,8 @@ export class GameEngine {
     this.showToast("Welcome back to campus.");
     if (this.nightMode) {
       this.updateNightMarker();
+    } else if (this.messMeal.isActive) {
+      this.updateMessMarker();
     } else if (this.mission.done) {
       this.world.showMarker(null, true);
     }
@@ -1738,6 +1835,7 @@ export class GameEngine {
         completedAt: null,
       },
       classBunk: this.classBunk.toSave(),
+      messMeal: this.messMeal.toSave(),
     };
     const ok = this.saveSystem.save(data);
     if (ok) {
@@ -1760,6 +1858,13 @@ export class GameEngine {
     this.teachers?.reset();
     this.principalReferral?.reset();
     this.classBunk = new ClassBunkSystem();
+    this.messMeal = new MessMealSystem();
+    this.messCaughtStage = null;
+    this.messCaughtTeacherId = null;
+    this.messCaughtTimer = 0;
+    this.messPrincipalAutoOpened = false;
+    this.world.setMealInteractableActive(false);
+    this.world.setRoommateCelebration(false);
     this.principalDialogue.end();
     this.lastDiscipline = null;
     this.nightMode = false;
@@ -1783,6 +1888,7 @@ export class GameEngine {
       gardenDuty: null,
       principalReferral: null,
       classBunk: null,
+      messMeal: null,
       exploration: null,
       planOpen: false,
       campusMapOpen: false,
@@ -1835,7 +1941,7 @@ export class GameEngine {
   enterCameraOverview(): boolean {
     const state = this.store.getState();
     if (state.screen !== "playing" || state.settingsOpen || state.profileOpen) return false;
-    if (this.multiplayer || this.nightMode) {
+    if (this.multiplayer || this.nightMode || this.messMeal.isActive) {
       this.showToast("Campus overview is available in the single-player daytime campus.");
       return false;
     }
@@ -1860,6 +1966,10 @@ export class GameEngine {
     if (!isClassBunkDifficulty(difficulty)) return false;
     if (this.classBunk.isActive) {
       this.showToast("You are already in the middle of a class bunk. Finish it or abandon it from the pause menu.");
+      return false;
+    }
+    if (this.messMeal.isActive) {
+      this.showToast("Finish or leave the mess meal run before skipping class.");
       return false;
     }
     if (this.nightMode && this.night.active) {
@@ -2039,11 +2149,339 @@ export class GameEngine {
     }
   }
 
+  startMessMeal(difficulty: MessMealDifficulty = "normal"): boolean {
+    if (!this.profile) return false;
+    if (!isMessMealDifficulty(difficulty)) return false;
+    if (this.messMeal.isActive) {
+      this.showToast("Your mess meal run is already underway. Finish it or abandon it from the pause menu.");
+      return false;
+    }
+    if (this.classBunk.isActive) {
+      this.showToast("Finish or leave CLASS BUNK before starting the mess run.");
+      return false;
+    }
+    if (this.nightMode && this.night.active) {
+      this.showToast("Finish or leave the midnight caper before starting another night mission.");
+      return false;
+    }
+    if (this.principalReferral?.isActive) {
+      this.showToast("Report to the Principal's Chamber before starting another caper.");
+      return false;
+    }
+    const hostel = this.world.houseHostels[this.profile.houseId];
+    if (!hostel) return false;
+    void this.audio.unlock();
+    this.cancelGardenDuty(false);
+    this.messMeal.start(difficulty);
+    this.messMeal.setReturnPoint(hostel.interiorPoint.x, hostel.interiorPoint.z, "your hostel");
+    this.messMealCompleted = 0;
+    this.messMealHudTimer = 0;
+    this.messPrincipalAutoOpened = false;
+    this.messCaughtStage = null;
+    this.messCaughtTeacherId = null;
+    this.messCaughtTimer = 0;
+    this.nightMode = false;
+    this.nightCaughtHandled = false;
+    this.suspicion = 0;
+    this.setCrouching(false);
+    for (const door of this.world.doors) door.setOpenInstant(false);
+    this.world.doors.find((door) => door.label === `house-${this.profile?.houseId}`)?.setOpenInstant(true);
+    this.world.setNight(true);
+    this.world.setGardenInteractablesActive(false);
+    this.world.setGardenPlotVerb(null);
+    this.world.setMealInteractableActive(true);
+    this.world.setRoommateCelebration(false);
+    this.world.hideMarker();
+    this.audio.setNight(true);
+    this.applyAtmosphere(true);
+    this.teachers?.setEnabled(true);
+    this.teachers?.setActiveSubset(this.messMeal.teacherIds);
+    this.teachers?.setSpeedScale(this.messMeal.teacherSpeed);
+    this.teachers?.setTimetablePhase("hostel");
+    this.player.placeAt(hostel.interiorPoint, Math.PI);
+    this.cameraController.resetToPlayer(hostel.interiorPoint, Math.PI);
+    this.store.patch({
+      screen: "playing",
+      settingsOpen: false,
+      profileOpen: false,
+      dialogue: null,
+      notice: null,
+      ending: null,
+      prompt: null,
+      planOpen: false,
+      campusMapOpen: false,
+      campusMap: null,
+      cameraOverview: false,
+      night: null,
+      nightResult: null,
+      gardenDuty: null,
+      discipline: null,
+      principalReferral: null,
+      classBunk: null,
+      messMeal: this.messMeal.view(),
+      crouching: false,
+    });
+    this.input.reset();
+    this.input.setEnabled(true);
+    this.updateMessMarker();
+    this.requestPointerLock();
+    this.saveGame(false);
+    this.audio.chime();
+    this.showToast(
+      `${MESS_MEAL_DIFFICULTIES[difficulty].label} MESS MEAL SNEAK. Reach the serving counter, collect the food and get back before a patrol finds you.`,
+    );
+    return true;
+  }
+
+  private updateMessMarker(): void {
+    const target = this.messMeal.isActive ? this.messMeal.targetPoint() : null;
+    if (!target) {
+      this.world.hideMarker();
+      return;
+    }
+    this.world.showMarkerAt(new THREE.Vector3(target.x, 0, target.z));
+  }
+
+  collectMessMeal(): void {
+    if (!this.messMeal.isActive) return;
+    const result = this.messMeal.collectMeal();
+    if (!result.ok) {
+      this.showToast(result.reason ?? "You cannot collect the meal yet.");
+      return;
+    }
+    this.world.setMealInteractableActive(false);
+    this.audio.chime();
+    this.updateMessMarker();
+    this.store.patch({ messMeal: this.messMeal.view() });
+    this.saveGame(false);
+    this.showToast("Meal collected. Keep it steady and get back to your hostel.");
+  }
+
+  private handleMessCaught(teacherId: TeacherId): void {
+    const teacher = this.teachers?.teacher(teacherId);
+    this.messCaughtStage = "approach";
+    this.messCaughtTeacherId = teacherId;
+    this.messCaughtTimer = 0;
+    this.input.setEnabled(false);
+    this.input.reset();
+    this.store.setPrompt(null);
+    this.releasePointerLock();
+    this.world.hideMarker();
+    this.store.patch({
+      messMeal: this.messMeal.view(),
+      principalReferral: null,
+      prompt: null,
+    });
+    this.showToast(
+      `${teacher?.config.name ?? "A teacher"} spotted you. Stay where you are — they are walking over.`,
+    );
+    this.audio.chime();
+  }
+
+  private openMessCaughtDialogue(): void {
+    const teacherId = this.messCaughtTeacherId;
+    if (!teacherId) return;
+    const teacher = this.teachers?.teacher(teacherId);
+    const name = teacher?.config.name ?? "A teacher";
+    const player = this.player.position;
+    if (this.principalReferral && !this.principalReferral.isActive) {
+      this.principalReferral.assign({
+        teacherId,
+        teacherName: name,
+        reason: "Sneaking to the mess after lights-out to bring food to the hostel",
+        player,
+        now: this.elapsed * 1000,
+      });
+      this.principalReferral.update(player, 0);
+    }
+    this.messCaughtStage = null;
+    this.messCaughtTimer = 0;
+    this.messPrincipalAutoOpened = false;
+    this.teacherDialogueId = teacherId;
+    if (teacher) {
+      this.dialogueAnchor.copy(teacher.position);
+      teacher.startTalking("stern");
+    }
+    this.dialogueSource = "mess-caught";
+    this.store.setDialogue({
+      speaker: name,
+      role: `${teacher?.config.subject ?? "Staff"} · Night duty`,
+      text: `${MESS_MEAL_CAUGHT_LINE}\\n\\n${MESS_MEAL_CAUGHT_FOLLOW_UP}`,
+      choices: [],
+      canAdvance: true,
+    });
+    this.store.patch({
+      screen: "dialogue",
+      messMeal: this.messMeal.view(),
+      principalReferral: this.principalReferral?.view(player) ?? null,
+    });
+    this.saveGame(false);
+    this.audio.chime();
+    this.showToast("Report to the Principal's Chamber. Your meal and progress are preserved.");
+  }
+
+  private updateMessMeal(dt: number): void {
+    if (!this.messMeal.isActive) return;
+    const before = this.messMeal.view();
+    if (before.status === "caught" || before.result) return;
+    const teachers = this.messMeal.teacherIds.flatMap((id) => {
+      const controller = this.teachers?.teacher(id);
+      if (!controller || !controller.rig.group.visible) return [];
+      return [
+        {
+          id,
+          name: controller.config.name,
+          x: controller.position.x,
+          z: controller.position.z,
+          rotation: controller.rotation,
+          detectionRadius: controller.config.detectionRadius,
+          lineOfSight: this.world.hasLineOfSight(
+            controller.position.x,
+            controller.position.z,
+            this.player.position.x,
+            this.player.position.z,
+          ),
+        },
+      ];
+    });
+    const caughtBy = this.messMeal.update({
+      playerX: this.player.position.x,
+      playerZ: this.player.position.z,
+      crouching: this.crouching,
+      dt,
+      teachers,
+    });
+    if (caughtBy) {
+      this.handleMessCaught(caughtBy);
+      return;
+    }
+    const next = this.messMeal.view();
+    if (next.completed > this.messMealCompleted) {
+      this.messMealCompleted = next.completed;
+      if (next.status !== "return") {
+        this.showToast(`Night route cleared · ${next.completed}/${next.total}. Keep moving.`);
+        this.audio.chime();
+      }
+    }
+    if (next.result) {
+      if (next.result.outcome === "completed") {
+        this.world.setRoommateCelebration(true);
+        this.audio.chime();
+      }
+      this.world.setMealInteractableActive(false);
+      this.world.hideMarker();
+      this.teachers?.setActiveSubset(null);
+      this.teachers?.setSpeedScale(1);
+      this.teachers?.setTimetablePhase(null);
+      this.teachers?.setEnabled(false);
+      this.store.patch({ messMeal: next });
+      this.saveGame(false);
+      return;
+    }
+    this.messMealHudTimer += dt;
+    if (this.messMealHudTimer >= 0.2 || next.status !== before.status) {
+      this.messMealHudTimer = 0;
+      this.updateMessMarker();
+      this.store.patch({ messMeal: next });
+    }
+  }
+
+  dismissMessMeal(): void {
+    const view = this.messMeal.view();
+    if (!view.result) return;
+    this.messMeal.dismissResult();
+    this.world.setRoommateCelebration(false);
+    this.world.setMealInteractableActive(false);
+    this.world.hideMarker();
+    this.world.setNight(false);
+    this.audio.setNight(false);
+    this.applyAtmosphere(false);
+    this.nightMode = false;
+    this.messCaughtStage = null;
+    this.messCaughtTeacherId = null;
+    this.messCaughtTimer = 0;
+    this.teachers?.setActiveSubset(null);
+    this.teachers?.setSpeedScale(1);
+    this.teachers?.setTimetablePhase(null);
+    this.teachers?.setEnabled(true);
+    this.store.patch({
+      messMeal: null,
+      principalReferral: this.principalReferral?.isActive
+        ? this.principalReferral.view(this.player.position)
+        : null,
+    });
+    this.saveGame(false);
+    this.audio.uiClick();
+    this.showToast(
+      view.result.outcome === "completed"
+        ? "The food is shared. The hostel settles down for the night."
+        : "The night caper is over. The campus returns to its usual morning.",
+    );
+  }
+
+  abandonMessMeal(): boolean {
+    if (!this.messMeal.isActive) return false;
+    this.messMeal.finish("ended");
+    this.messCaughtStage = null;
+    this.messCaughtTeacherId = null;
+    this.messCaughtTimer = 0;
+    this.world.setRoommateCelebration(false);
+    this.world.setMealInteractableActive(false);
+    this.world.hideMarker();
+    this.teachers?.setActiveSubset(null);
+    this.teachers?.setSpeedScale(1);
+    this.teachers?.setTimetablePhase(null);
+    this.teachers?.setEnabled(false);
+    this.store.patch({
+      screen: "playing",
+      messMeal: this.messMeal.view(),
+      principalReferral: this.principalReferral?.isActive
+        ? this.principalReferral.view(this.player.position)
+        : null,
+    });
+    this.input.reset();
+    this.input.setEnabled(true);
+    this.saveGame(false);
+    this.audio.uiClick();
+    return true;
+  }
+
+  private returnMessToHostelAfterPrincipal(): void {
+    const houseId = this.profile?.houseId;
+    const hostel = houseId ? this.world.houseHostels[houseId] : undefined;
+    this.messMeal.finishAfterPrincipalReturning();
+    const view = this.messMeal.view();
+    if (hostel) {
+      const point = new THREE.Vector3(hostel.interiorPoint.x, 0, 36.15);
+      this.player.placeAt(point, view.status === "completed" ? 0 : Math.PI);
+      this.cameraController.resetToPlayer(this.player.position, this.player.rotationY);
+    }
+    this.world.setMealInteractableActive(false);
+    this.world.hideMarker();
+    this.world.setRoommateCelebration(view.status === "completed");
+    this.teachers?.setActiveSubset(null);
+    this.teachers?.setSpeedScale(1);
+    this.teachers?.setTimetablePhase(null);
+    this.teachers?.setEnabled(false);
+    this.store.patch({ messMeal: view });
+    if (view.status === "completed") {
+      this.audio.chime();
+      this.showToast("You made it back. Your roommates are already gathering around the food.");
+    } else {
+      this.showToast("You returned to the hostel empty-handed.");
+    }
+    this.saveGame(false);
+  }
+
   startNight(): boolean {
     if (!this.profile) return false;
     if (this.night.active) return false;
     if (this.classBunk.isActive) {
       this.showToast("Finish or leave CLASS BUNK before starting another caper.");
+      return false;
+    }
+    if (this.messMeal.isActive) {
+      this.showToast("Finish or leave the mess meal run before starting another night caper.");
       return false;
     }
     const house = getHouse(this.profile.houseId);
@@ -2134,6 +2572,10 @@ export class GameEngine {
     if (!this.profile) return false;
     if (this.classBunk.isActive) {
       this.showToast("Finish or abandon CLASS BUNK before taking on garden duty.");
+      return false;
+    }
+    if (this.messMeal.isActive) {
+      this.showToast("Finish or leave the mess meal run before taking on garden duty.");
       return false;
     }
     if (!this.profile.achievements.includes("caught-in-the-act")) {
@@ -2268,7 +2710,15 @@ export class GameEngine {
     }
     const target = this.interaction.target;
     if (!target) return;
+    if (target.kind === "meal") {
+      this.collectMessMeal();
+      return;
+    }
     if (target.kind === "teacher") {
+      if (this.messMeal.isActive) {
+        this.showToast("Do not stop to chat. A teacher who sees you out here will send you to the Principal.");
+        return;
+      }
       const teacherId = this.teachers?.teacherForInteractable(target.id);
       if (teacherId) this.openTeacherDialogue(teacherId);
       return;
@@ -2285,7 +2735,9 @@ export class GameEngine {
       return;
     }
     if (target.kind === "roommate") {
-      if (this.nightMode && this.night.active && this.night.currentStepId === "meet-roommate") {
+      if (this.messMeal.isActive) {
+        this.showToast("Your roommates are waiting quietly. Get the food first.");
+      } else if (this.nightMode && this.night.active && this.night.currentStepId === "meet-roommate") {
         this.openNightChallenge(target.position);
       } else if (this.nightMode && this.night.active) {
         this.showToast("Your roommate is pretending to be asleep. The garden is waiting.");
@@ -2526,6 +2978,7 @@ export class GameEngine {
     this.input.setEnabled(true);
     if (snapCamera) this.cameraController.resetToPlayer(this.player.position, this.player.rotationY);
     if (this.nightMode && this.night.active) this.updateNightMarker();
+    else if (this.messMeal.isActive) this.updateMessMarker();
     else this.world.showMarker(this.mission.currentStepId, this.mission.done);
     this.requestPointerLock();
   }
@@ -2740,6 +3193,8 @@ export class GameEngine {
         teacherName: referral?.teacherName ?? null,
         reason: referral?.reason ?? null,
         bunkActive: this.classBunk.isActive && this.classBunk.view().status === "caught",
+        messMealActive: this.messMeal.isActive && this.messMeal.status === "caught",
+        mealCollected: this.messMeal.mealCollected,
       }),
     );
     this.store.setScreen("dialogue");
@@ -2758,7 +3213,9 @@ export class GameEngine {
   private finishPrincipalDialogue(): void {
     const resolved = this.principalDialogue.isResolved;
     const bunkOutcome = this.principalDialogue.classBunkOutcome;
+    const messOutcome = this.principalDialogue.messMealOutcome;
     const bunkCaught = this.classBunk.isActive && this.classBunk.view().status === "caught";
+    const messCaught = this.messMeal.isActive && this.messMeal.status === "caught";
     this.principalDialogue.end();
     this.dialogueSource = null;
     this.store.setDialogue(null);
@@ -2778,6 +3235,30 @@ export class GameEngine {
         this.showToast("Principal Moinm Rahman has ended the class bunk attempt.");
       }
       this.store.patch({ classBunk: this.classBunk.view() });
+    }
+    if (messCaught) {
+      this.messPrincipalAutoOpened = resolved;
+      if (resolved && messOutcome === "resume") {
+        this.messMeal.resumeAfterCaught();
+        this.teachers?.setEnabled(true);
+        this.teachers?.setActiveSubset(this.messMeal.teacherIds);
+        this.teachers?.setSpeedScale(this.messMeal.teacherSpeed);
+        this.teachers?.setTimetablePhase("hostel");
+        this.world.setMealInteractableActive(!this.messMeal.mealCollected);
+        this.updateMessMarker();
+        this.showToast(
+          this.messMeal.mealCollected
+            ? "Back to the night route. Get the food home and stay clear of the patrols."
+            : "Back to the night route. The serving counter is still waiting.",
+        );
+        this.store.patch({ messMeal: this.messMeal.view() });
+        this.audio.uiClick();
+      } else if (resolved && messOutcome === "return") {
+        this.returnMessToHostelAfterPrincipal();
+      } else {
+        // Closing before the decision leaves the referral and mission paused.
+        this.store.patch({ messMeal: this.messMeal.view() });
+      }
     }
     this.saveGame(false);
     this.requestPointerLock();
@@ -2800,6 +3281,24 @@ export class GameEngine {
       this.store.patch({
         screen: "playing",
         classBunk: this.classBunk.view(),
+        principalReferral: this.principalReferral?.view(this.player.position) ?? null,
+      });
+      this.input.reset();
+      this.input.setEnabled(true);
+      this.saveGame(false);
+      this.requestPointerLock();
+      return;
+    }
+    if (this.dialogueSource === "mess-caught") {
+      if (this.messCaughtTeacherId) {
+        this.teachers?.teacher(this.messCaughtTeacherId)?.stopTalking(true);
+      }
+      this.dialogueSource = null;
+      this.messCaughtTeacherId = null;
+      this.store.setDialogue(null);
+      this.store.patch({
+        screen: "playing",
+        messMeal: this.messMeal.view(),
         principalReferral: this.principalReferral?.view(this.player.position) ?? null,
       });
       this.input.reset();
@@ -3156,16 +3655,34 @@ export class GameEngine {
         this.player.moving,
       );
 
-      const teachersEnabled = !this.multiplayer && !this.nightMode;
+      const teachersEnabled =
+        !this.multiplayer &&
+        (!this.nightMode || this.messMeal.isActive) &&
+        !this.messMeal.view().result;
       this.teachers?.setEnabled(teachersEnabled);
       if (teachersEnabled) {
-        this.teachers?.update(dt, this.elapsed, this.teacherContext("playing"));
-        this.disciplineHudTimer += dt;
-        if (this.disciplineHudTimer >= 0.25) {
-          this.disciplineHudTimer = 0;
-          this.syncDisciplineHud();
+        if (this.messCaughtStage === "approach" && this.messCaughtTeacherId) {
+          const arrived =
+            this.teachers?.approachCaughtPlayer(
+              this.messCaughtTeacherId,
+              dt,
+              this.player.position.x,
+              this.player.position.z,
+            ) ?? false;
+          this.messCaughtTimer += dt;
+          if ((arrived && this.messCaughtTimer >= 0.65) || this.messCaughtTimer >= 6) {
+            this.openMessCaughtDialogue();
+          }
+        } else {
+          this.teachers?.update(dt, this.elapsed, this.teacherContext("playing"));
+          this.disciplineHudTimer += dt;
+          if (this.disciplineHudTimer >= 0.25) {
+            this.disciplineHudTimer = 0;
+            this.syncDisciplineHud();
+          }
+          if (this.messMeal.isActive) this.updateMessMeal(dt);
+          else this.updateClassBunk(dt);
         }
-        this.updateClassBunk(dt);
       }
       if (!this.multiplayer && this.principalReferral?.isActive) {
         this.principalReferralTimer += dt;
@@ -3181,6 +3698,14 @@ export class GameEngine {
         ) {
           this.bunkPrincipalAutoOpened = true;
           this.openPrincipalDialogue();
+        } else if (
+          !this.messPrincipalAutoOpened &&
+          this.messMeal.isActive &&
+          this.messMeal.status === "caught" &&
+          this.world.isInsidePrincipalChamber(this.player.position)
+        ) {
+          this.messPrincipalAutoOpened = true;
+          this.openPrincipalDialogue();
         }
       }
 
@@ -3188,7 +3713,9 @@ export class GameEngine {
       const crate = this.multiplayer
         ? this.multiplayer.layer.nearestCrate(this.player.position.x, this.player.position.z)
         : null;
-      if (crate) {
+      if (this.messCaughtStage) {
+        this.store.setPrompt(null);
+      } else if (crate) {
         this.store.setPrompt(`Collect ${crate.name}`);
       } else {
         this.store.setPrompt(target ? this.interaction.promptFor(target) : null);

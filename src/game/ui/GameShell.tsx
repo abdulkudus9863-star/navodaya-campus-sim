@@ -16,6 +16,9 @@ import {
   LogOut,
   Map as MapIcon,
   Moon,
+  MoonStar,
+  Heart,
+  Utensils,
   Mouse,
   Pause,
   Play,
@@ -31,7 +34,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { GameEngine } from "../core/GameEngine";
 import { GameStore, useGameState } from "../core/GameStore";
 import { SaveSystem } from "../core/SaveSystem";
-import { DEFAULT_SETTINGS, type ClassBunkView, type GameUIState } from "../core/types";
+import { DEFAULT_SETTINGS, type ClassBunkView, type GameUIState, type MessMealView } from "../core/types";
 import type { MapWaypoint } from "../data/liveMap";
 import { getHouse } from "../data/houses";
 import { AdventureMenu } from "./AdventureMenu";
@@ -160,6 +163,7 @@ export function GameShell({
           )}
           {state.isTouch && <OrientationHint />}
           {state.classBunk?.result && <ClassBunkResultOverlay bunk={state.classBunk} engine={engine} />}
+          {state.messMeal?.result && <MessMealResultOverlay mess={state.messMeal} engine={engine} />}
         </>
       )}
 
@@ -706,7 +710,7 @@ function Hud({
       <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/55 to-transparent" />
       <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 to-transparent" />
 
-      {!night && !duty && !multiplayer && !state.discipline?.active && !principal && !state.classBunk?.active && !state.classBunk?.result && (
+      {!night && !duty && !multiplayer && !state.discipline?.active && !principal && !state.classBunk?.active && !state.classBunk?.result && !state.messMeal?.active && !state.messMeal?.result && (
       <motion.div
         key={mission.objective}
         initial={{ opacity: 0, y: -8 }}
@@ -747,6 +751,19 @@ function Hud({
       {night && <NightMissionHud night={night} />}
       {duty && <GardenDutyHud duty={duty} />}
       {state.classBunk?.active && !principal && <ClassBunkHud bunk={state.classBunk} />}
+      {state.messMeal?.active && !principal && (
+        <MessMealHud mess={state.messMeal} referralActive={Boolean(state.principalReferral?.active)} />
+      )}
+      {state.messMeal?.active && principal && (
+        <div className="absolute left-4 top-[max(9.8rem,calc(env(safe-area-inset-top)+8.4rem))] z-20 w-[min(15rem,calc(100%-13.5rem))] border-l border-[#8fc7e8]/45 pl-3 font-ui sm:left-6 sm:top-[11.5rem]">
+          <p className="flex items-center gap-1.5 text-[8px] uppercase tracking-[0.18em] text-[#b9dced]/75">
+            <MoonStar className="size-3" /> MESS MEAL SNEAK paused
+          </p>
+          <p className="mt-1 text-[10px] leading-relaxed text-[#e6f0f5]/55">
+            {state.messMeal.mealCollected ? "Meal secured · report to the Principal" : "Report to the Principal, then retry"}
+          </p>
+        </div>
+      )}
       {state.classBunk?.active && principal && (
         <div className="absolute left-4 top-[max(9.8rem,calc(env(safe-area-inset-top)+8.4rem))] z-20 w-[min(15rem,calc(100%-13.5rem))] border-l border-[#9fc38d]/45 pl-3 font-ui sm:left-6 sm:top-[11.5rem]">
           <p className="flex items-center gap-1.5 text-[8px] uppercase tracking-[0.18em] text-[#cfe0bd]/70">
@@ -971,6 +988,180 @@ function ClassBunkHud({ bunk }: { bunk: ClassBunkView }) {
           <Footprints className="size-2.5 shrink-0" /> Attendance · return to Room 101
         </li>
       </ol>
+    </motion.div>
+  );
+}
+
+function MessMealHud({
+  mess,
+  referralActive,
+}: {
+  mess: MessMealView;
+  referralActive: boolean;
+}) {
+  const caught = mess.status === "caught";
+  const target = caught
+    ? referralActive
+      ? "Report to the Principal"
+      : "Stay where you are"
+    : mess.target?.label ?? "Night route";
+  return (
+    <motion.div
+      key={mess.difficulty}
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      data-testid="mess-meal-hud"
+      className="absolute left-4 top-4 w-[calc(100%-11rem)] max-w-[17rem] border-l-2 border-[#8fc7e8]/75 bg-[#071018]/48 py-1 pl-4 pr-2 backdrop-blur-[2px] sm:left-6 sm:top-6 sm:max-w-[21rem]"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="inline-flex items-center gap-1.5 font-ui text-[8px] uppercase tracking-[0.2em] text-[#b9dced]">
+          <MoonStar className="size-3" /> MESS MEAL SNEAK · {mess.difficultyLabel}
+        </p>
+        <span className="inline-flex items-center gap-1 font-ui text-[8px] uppercase tracking-[0.14em] text-[#e6f0f5]/55">
+          <Utensils className="size-3" /> {mess.mealCollected ? "Meal secured" : "No meal yet"}
+        </span>
+      </div>
+      <p className="mt-1.5 font-display text-[17px] leading-snug text-[#edf6fb] drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+        {target}
+      </p>
+      <p className="mt-0.5 font-ui text-[10px] leading-relaxed text-[#d8e8f1]/60">
+        {caught
+          ? referralActive
+            ? `${mess.caughtBy ?? "A teacher"} has paused the run. Principal Moinm Rahman is waiting in his chamber.`
+            : `${mess.caughtBy ?? "A teacher"} has seen you. Stay where you are while they walk over.`
+          : mess.status === "return"
+            ? "The food is warm. Get inside your hostel room without crossing a patrol's line of sight."
+            : mess.exposed
+              ? "A teacher can see you. Break line of sight or crouch low."
+              : "Stay on the lit paths. The serving counter is inside the dining hall."}
+      </p>
+
+      <div className="mt-2 max-w-[16rem] rounded-sm border border-[#8fc7e8]/18 bg-black/45 px-2.5 py-2 backdrop-blur-sm">
+        <div className="flex items-center justify-between gap-2 font-ui text-[8px] uppercase tracking-[0.16em]">
+          <span className="inline-flex items-center gap-1.5 text-foreground/50">
+            <Eye className="size-2.5" /> Suspicion
+          </span>
+          <span className={mess.suspicion > 60 ? "text-[#e3a28d]" : "text-[#c6e8fb]/80"}>
+            {mess.suspicion}%
+          </span>
+        </div>
+        <div
+          className="mt-1 h-[3px] overflow-hidden rounded-full bg-foreground/15"
+          role="meter"
+          aria-label="Suspicion"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={mess.suspicion}
+        >
+          <div
+            className="h-full rounded-full transition-[width] duration-150"
+            style={{
+              width: `${mess.suspicion}%`,
+              backgroundColor: mess.suspicion > 70 ? "#d96f55" : mess.suspicion > 35 ? "#e0b06a" : "#9ed3ee",
+            }}
+          />
+        </div>
+        <div className="mt-1.5 flex items-center justify-between font-ui text-[8px] uppercase tracking-[0.14em]">
+          <span className={mess.exposed ? "text-[#e3a28d]" : "text-[#a8d3ad]/80"}>
+            {mess.exposed ? "Spotted — break line of sight" : "Unseen"}
+          </span>
+          <span className="text-[#e9ddc8]/40">Crouch to stay low</span>
+        </div>
+      </div>
+
+      <ol className="mt-2 space-y-0.5">
+        {mess.objectives.map((objective) => (
+          <li
+            key={objective.id}
+            className={`flex items-center gap-1.5 font-ui text-[9px] leading-snug ${
+              objective.complete ? "text-[#a8d3ad]/65" : "text-[#e6f0f5]/45"
+            }`}
+          >
+            {objective.complete ? (
+              <Check className="size-2.5 shrink-0" />
+            ) : (
+              <span className="size-1.5 shrink-0 rounded-full border border-[#d8e8f1]/35" />
+            )}
+            <span className="truncate">{objective.label}</span>
+          </li>
+        ))}
+      </ol>
+    </motion.div>
+  );
+}
+
+function MessMealResultOverlay({
+  mess,
+  engine,
+}: {
+  mess: MessMealView;
+  engine: GameEngine | null;
+}) {
+  const result = mess.result;
+  if (!result) return null;
+  const success = result.outcome === "completed";
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      data-testid="mess-meal-result"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/58 px-5 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-label={result.title}
+    >
+      <div className={`relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto border p-6 shadow-[0_30px_100px_rgba(0,0,0,0.65)] sm:p-9 ${success ? "border-[#d9b56d]/45 bg-[#14130d]/94" : "border-[#8fc7e8]/30 bg-[#0a1118]/95"}`}>
+        <span
+          className={`flex size-12 items-center justify-center rounded-full border ${
+            success
+              ? "border-[#e2c17e]/55 bg-[#e2c17e]/10 text-[#f5dfae]"
+              : "border-[#8fc7e8]/40 bg-[#8fc7e8]/8 text-[#c6e8fb]"
+          }`}
+        >
+          {success ? <Heart className="size-6" /> : <MoonStar className="size-6" />}
+        </span>
+        <p className="mt-5 font-ui text-[8px] uppercase tracking-[0.26em] text-[#d9b56d]/75">
+          MESS MEAL SNEAK · {mess.difficultyLabel}
+        </p>
+        <h2 className="mt-2 font-display text-[clamp(2.1rem,6vw,3.2rem)] leading-none text-[#f5ead4]">
+          {result.title}
+        </h2>
+        <p className="mt-4 font-ui text-[12px] leading-relaxed text-[#e9ddc8]/65">{result.message}</p>
+
+        {success && (
+          <div className="mt-4 border-l-2 border-[#e2c17e]/55 pl-3 font-ui text-[12px] leading-relaxed text-[#f2e3c2]/85">
+            <p>“Bro! You actually brought food! 😂”</p>
+            <p className="mt-1 text-[#f2e3c2]/65">“Come on, let's eat together!”</p>
+            <p className="mt-3 inline-flex items-center gap-2 font-ui text-[8px] uppercase tracking-[0.18em] text-[#e2c17e]/70">
+              <Heart className="size-3" /> Roommate happiness 55 → 100
+            </p>
+          </div>
+        )}
+
+        <div className="mt-5 grid grid-cols-3 gap-3 border-y border-[#d7b873]/15 py-4 font-ui">
+          <div>
+            <p className="text-[8px] uppercase tracking-[0.16em] text-[#e9ddc8]/35">Route</p>
+            <p className="mt-1 font-display text-xl text-[#f0e4ca]">{mess.completed}/{mess.total}</p>
+          </div>
+          <div>
+            <p className="text-[8px] uppercase tracking-[0.16em] text-[#e9ddc8]/35">Meal</p>
+            <p className="mt-1 font-display text-xl text-[#f0e4ca]">{mess.mealCollected ? "Saved" : "Lost"}</p>
+          </div>
+          <div>
+            <p className="text-[8px] uppercase tracking-[0.16em] text-[#e9ddc8]/35">Suspicion</p>
+            <p className="mt-1 font-display text-xl text-[#f0e4ca]">{mess.suspicion}%</p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => engine?.dismissMessMeal()}
+          data-testid="mess-meal-result-close"
+          className="mt-5 inline-flex w-full items-center justify-center gap-2 border border-[#c9a45d]/65 bg-[#c9a45d]/15 px-4 py-3 font-ui text-[10px] uppercase tracking-[0.24em] text-[#f5e3ba] transition hover:border-[#efd79f]/90 hover:bg-[#c9a45d]/25"
+        >
+          <Footprints className="size-3.5" /> {success ? "Let them eat" : "Back to the campus"}
+        </button>
+      </div>
     </motion.div>
   );
 }
@@ -1240,6 +1431,14 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
               onClick={() => engine?.abandonClassBunk()}
             />
           )}
+          {state.messMeal?.active && (
+            <MenuRow
+              index="02"
+              label="Abandon mess meal run"
+              detail={`${state.messMeal.completed}/${state.messMeal.total} route steps preserved · return to hostel`}
+              onClick={() => engine?.abandonMessMeal()}
+            />
+          )}
           <MenuRow
             index="02"
             label="Save progress"
@@ -1261,7 +1460,7 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
               detail={
                 state.night?.active
                   ? `Fictional stealth caper · attempt ${state.night.attempts}`
-                  : "Operation Midnight Mischief or Campus Escape"
+                  : "Mess Meal Sneak, Operation Midnight Mischief or Campus Escape"
               }
               onClick={() => (state.night?.active ? engine?.resume() : engine?.openAdventure())}
             />

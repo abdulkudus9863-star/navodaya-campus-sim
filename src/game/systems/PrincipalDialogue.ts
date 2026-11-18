@@ -1,5 +1,6 @@
 import type { DialogueNode, DialogueView } from "../core/types";
 import { PRINCIPAL } from "../data/principal";
+import { MESS_MEAL_PRINCIPAL_OPENING } from "../data/messMeal";
 
 export interface PrincipalDialogueContext {
   studentName: string;
@@ -8,6 +9,9 @@ export interface PrincipalDialogueContext {
   reason: string | null;
   /** CLASS BUNK caught flow offers a resume or end decision. */
   bunkActive?: boolean;
+  /** MESS MEAL SNEAK caught flow has its own authored conversation. */
+  messMealActive?: boolean;
+  mealCollected?: boolean;
 }
 
 /**
@@ -19,6 +23,7 @@ export class PrincipalDialogue {
   private currentId: string | null = null;
   private resolved = false;
   private bunkOutcome: "resume" | "end" | null = null;
+  private messOutcome: "resume" | "return" | null = null;
 
   get isActive(): boolean {
     return this.currentId !== null;
@@ -32,11 +37,77 @@ export class PrincipalDialogue {
     return this.bunkOutcome;
   }
 
+  get messMealOutcome(): "resume" | "return" | null {
+    return this.messOutcome;
+  }
+
   start(context: PrincipalDialogueContext): DialogueView {
     this.nodes.clear();
     this.resolved = false;
     this.bunkOutcome = null;
+    this.messOutcome = null;
     const teacher = context.teacherName ?? "your teacher";
+    if (context.messMealActive && context.referralActive) {
+      this.add({
+        id: "mess-intro",
+        text: MESS_MEAL_PRINCIPAL_OPENING,
+        choices: [
+          {
+            label: "I was trying to bring food for my roommates.",
+            next: "mess-food",
+          },
+          {
+            label: "I am sorry, Sir.",
+            next: "mess-sorry",
+          },
+          {
+            label: "I did not think it would cause a problem.",
+            next: "mess-thoughtless",
+          },
+        ],
+      });
+      this.add({
+        id: "mess-food",
+        text: `Food for your roommates is a generous thought, but generosity does not cancel a rule. ${teacher} caught you outside your hostel after lights-out. You should have asked the warden or waited until morning.`,
+        next: "mess-decision",
+      });
+      this.add({
+        id: "mess-sorry",
+        text: `An apology is a beginning, not a pass. ${teacher} has reported the incident, and I have to consider both your safety and the example it sets for the hostel.`,
+        next: "mess-decision",
+      });
+      this.add({
+        id: "mess-thoughtless",
+        text: `Not thinking is exactly how a quiet campus becomes a dangerous one. ${teacher} had to leave a real patrol to stop you. A rule you did not notice is still a rule.`,
+        next: "mess-decision",
+      });
+      this.add({
+        id: "mess-decision",
+        text: context.mealCollected
+          ? "The referral will be recorded. You still have the food with you. Do you want to carry it back to your hostel and finish this properly, or leave it and return now?"
+          : "The referral will be recorded. You have not collected anything yet. Do you want to try again and finish what you set out to do, or return to your hostel?",
+        choices: [
+          {
+            label: "I want to finish bringing the food to my roommates.",
+            next: "mess-resume",
+          },
+          {
+            label: "I will return to the hostel, sir.",
+            next: "mess-return",
+          },
+        ],
+      });
+      this.add({
+        id: "mess-resume",
+        text: "Go carefully, stay on the lit paths, and report to your warden tomorrow. If anyone else stops you, tell them I have already dealt with it.",
+      });
+      this.add({
+        id: "mess-return",
+        text: "Straight back to your hostel. We will speak again about the rule you broke, not about the food you wanted to share.",
+      });
+      this.currentId = "mess-intro";
+      return this.currentView();
+    }
     if (!context.referralActive) {
       this.add({
         id: "general",
@@ -151,6 +222,11 @@ export class PrincipalDialogue {
       this.resolved = true;
       if (choice.next === "resume-bunk") this.bunkOutcome = "resume";
       if (choice.next === "end-bunk") this.bunkOutcome = "end";
+    }
+    if (this.currentId === "mess-decision") {
+      this.resolved = true;
+      if (choice.next === "mess-resume") this.messOutcome = "resume";
+      if (choice.next === "mess-return") this.messOutcome = "return";
     }
     this.currentId = choice.next;
     return true;

@@ -64,6 +64,8 @@ export class TeacherNPCController {
   private available = false;
   private facingPlayer = false;
   private mood: TeacherUpdateContext["mood"] = "calm";
+  /** Mission difficulty scales real movement without changing base configs. */
+  speedScale = 1;
 
   constructor(config: TeacherConfig, area: TeacherRouteArea, group: THREE.Group) {
     this.config = config;
@@ -135,6 +137,7 @@ export class TeacherNPCController {
 
   update(dt: number, elapsed: number, context: TeacherUpdateContext): void {
     this.mood = context.mood;
+    const moveSpeed = this.config.speed * this.speedScale;
     const distance = Math.hypot(context.playerX - this.position.x, context.playerZ - this.position.z);
     const previousLoops = this.navigation.completedLoops;
 
@@ -170,7 +173,7 @@ export class TeacherNPCController {
       if (detection.approach && this.approachTimer < 2.8) {
         this.activityValue = "approaching";
         this.approachTimer += dt;
-        this.navigation.update(dt, this.config.speed * 1.15, context.colliders, {
+        this.navigation.update(dt, moveSpeed * 1.15, context.colliders, {
           bounds: context.bounds,
           avoid: context.otherTeachers,
           approach: {
@@ -179,7 +182,7 @@ export class TeacherNPCController {
             stopAt: this.config.approachRadius,
           },
         });
-        this.animateWalk(dt, this.config.speed * 1.15);
+        this.animateWalk(dt, moveSpeed * 1.15);
       } else {
         this.activityValue = "noticed";
         this.navigation.faceTowards(context.playerX, context.playerZ, dt, 6);
@@ -191,20 +194,20 @@ export class TeacherNPCController {
       this.interactable.active = false;
       if (this.activityValue === "cooldown") {
         const avoidPlayer = new THREE.Vector3(context.playerX, 0, context.playerZ);
-        this.navigation.update(dt, this.config.speed * 0.86, context.colliders, {
+        this.navigation.update(dt, moveSpeed * 0.86, context.colliders, {
           bounds: context.bounds,
           avoid: [...context.otherTeachers, avoidPlayer],
         });
-        this.animateWalk(dt, this.config.speed * 0.86);
+        this.animateWalk(dt, moveSpeed * 0.86);
         if (distance > this.config.detectionRadius * 1.6) this.activityValue = "patrolling";
       } else {
         this.activityValue = this.navigation.idleTime > 0 ? "idle" : "patrolling";
         const avoidPlayer = new THREE.Vector3(context.playerX, 0, context.playerZ);
-        this.navigation.update(dt, this.config.speed, context.colliders, {
+        this.navigation.update(dt, moveSpeed, context.colliders, {
           bounds: context.bounds,
           avoid: [...context.otherTeachers, avoidPlayer],
         });
-        if (this.navigation.moving) this.animateWalk(dt, this.config.speed);
+        if (this.navigation.moving) this.animateWalk(dt, moveSpeed);
         else this.animateIdle(dt, elapsed);
       }
     }
@@ -214,6 +217,33 @@ export class TeacherNPCController {
     }
     this.updatePresentation(distance);
     this.syncTransform();
+  }
+
+  /**
+   * MESS MEAL SNEAK catch approach. The player is already frozen; the teacher
+   * closes the distance on real collisions and stops at conversation range.
+   */
+  approachCaughtPlayer(
+    dt: number,
+    playerX: number,
+    playerZ: number,
+    colliders: BlockCollider[],
+    bounds: number,
+  ): { arrived: boolean; distance: number } {
+    this.activityValue = "approaching";
+    this.available = false;
+    this.interactable.active = false;
+    this.rig.indicator.visible = true;
+    this.navigation.update(dt, this.config.speed * this.speedScale * 1.2, colliders, {
+      bounds,
+      approach: { x: playerX, z: playerZ, stopAt: 2.2 },
+    });
+    this.animateWalk(dt, this.config.speed * this.speedScale * 1.2);
+    const distance = Math.hypot(playerX - this.position.x, playerZ - this.position.z);
+    this.updatePresentation(distance);
+    this.rig.indicator.visible = true;
+    this.syncTransform();
+    return { arrived: distance <= 2.8, distance };
   }
 
   /** During pause/dialogue the teacher keeps eye contact without walking. */

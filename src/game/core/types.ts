@@ -8,6 +8,7 @@ import type { GardenItemId } from "../data/night";
 import type { HouseId } from "../data/houses";
 import type { EscapeSave } from "../data/escape";
 import type { ClassBunkSave } from "../data/classBunk";
+import type { MessMealSave } from "../data/messMeal";
 
 export type Quality = "low" | "medium" | "high";
 
@@ -227,6 +228,7 @@ export interface SaveData {
   teachers: TeacherSave;
   principalReferral: PrincipalReferralSave;
   classBunk: ClassBunkSave;
+  messMeal: MessMealSave;
 }
 
 export interface DialogueChoice {
@@ -341,6 +343,35 @@ export interface ClassBunkView {
   completedOnce: boolean;
 }
 
+export interface MessMealObjectiveView {
+  id: string;
+  label: string;
+  complete: boolean;
+}
+
+export interface MessMealResultView {
+  outcome: "completed" | "failed" | "ended";
+  title: string;
+  message: string;
+}
+
+export interface MessMealView {
+  active: boolean;
+  difficulty: "easy" | "normal" | "hard";
+  difficultyLabel: string;
+  status: "to-mess" | "return" | "caught" | "completed" | "failed" | "ended";
+  mealCollected: boolean;
+  objectives: MessMealObjectiveView[];
+  completed: number;
+  total: number;
+  suspicion: number;
+  exposed: boolean;
+  caughtBy: string | null;
+  target: { x: number; z: number; label: string } | null;
+  result: MessMealResultView | null;
+  completedOnce: boolean;
+}
+
 export interface NightResultView {
   outcome: "success" | "caught";
   title: string;
@@ -378,6 +409,7 @@ export interface GameUIState {
   discipline: DisciplineView | null;
   principalReferral: PrincipalReferralView | null;
   classBunk: ClassBunkView | null;
+  messMeal: MessMealView | null;
   exploration: ExplorationView | null;
   planOpen: boolean;
   campusMapOpen: boolean;

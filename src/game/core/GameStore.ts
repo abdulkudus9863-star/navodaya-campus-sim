@@ -43,6 +43,7 @@ export class GameStore {
       discipline: null,
       principalReferral: null,
       classBunk: null,
+      messMeal: null,
       exploration: null,
       planOpen: false,
       campusMapOpen: false,

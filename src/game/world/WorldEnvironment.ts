@@ -61,7 +61,7 @@ export interface FloorRamp {
 
 export interface WorldInteractable {
   id: string;
-  kind: "npc" | "principal" | "notice" | "door" | "student" | "teacher" | "roommate" | "garden" | "book";
+  kind: "npc" | "principal" | "notice" | "door" | "student" | "teacher" | "roommate" | "garden" | "book" | "meal";
   label: string;
   position: THREE.Vector3;
   radius: number;
@@ -216,6 +216,8 @@ export class WorldEnvironment {
   fill: THREE.DirectionalLight | null = null;
   roommate: CharacterRig | null = null;
   roommateTag: THREE.Sprite | null = null;
+  roommateFriends: CharacterRig[] = [];
+  readonly mealPoint = new THREE.Vector3(-4, 0, -42.2);
   principal: CharacterRig | null = null;
   principalTag: THREE.Sprite | null = null;
 
@@ -244,6 +246,10 @@ export class WorldEnvironment {
   private stars: THREE.Points | null = null;
   private moon: THREE.Sprite | null = null;
   private roommateInteractable: WorldInteractable | null = null;
+  private mealInteractable: WorldInteractable | null = null;
+  private mealPickupVisual: THREE.Group | null = null;
+  private feastVisual: THREE.Group | null = null;
+  private roommateCelebrating = false;
 
   constructor() {
     this.group.name = "world";
@@ -1768,6 +1774,52 @@ export class WorldEnvironment {
     this.group.add(tag);
     this.roommateTag = tag;
 
+    const friendSkins = ["#8d5f3d", "#b9835a"];
+    const friendHair = ["black", "brown"] as const;
+    this.roommateFriends = friendSkins.map((skin, index) => {
+      const friend = createCharacter({
+        uniform: "#7d7f7a",
+        skin,
+        hairStyle: index === 0 ? "short" : "side",
+        hairColor: friendHair[index],
+      });
+      friend.group.name = `roommate-friend-${index + 1}`;
+      friend.group.visible = false;
+      this.group.add(friend.group);
+      return friend;
+    });
+
+    const feast = new THREE.Group();
+    feast.name = "roommate-feast";
+    const tableMaterial = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.8 });
+    const plateMaterial = new THREE.MeshStandardMaterial({ color: 0xd9d2be, roughness: 0.45 });
+    const foodMaterial = new THREE.MeshStandardMaterial({ color: 0xd8a04f, roughness: 0.7 });
+    const greenMaterial = new THREE.MeshStandardMaterial({ color: 0x6e8d4f, roughness: 0.8 });
+    this.disposables.push(tableMaterial, plateMaterial, foodMaterial, greenMaterial);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.09, 1.1), tableMaterial);
+    top.position.y = 0.52;
+    feast.add(top);
+    for (const [x, z] of [[-0.7, -0.5], [0.7, -0.5], [-0.7, 0.5], [0.7, 0.5]] as const) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.5, 0.09), tableMaterial);
+      leg.position.set(x, 0.25, z);
+      feast.add(leg);
+    }
+    for (const [x, z] of [[-0.42, -0.26], [0.4, -0.12], [-0.05, 0.3]] as const) {
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.15, 0.035, 16), plateMaterial);
+      plate.position.set(x, 0.585, z);
+      feast.add(plate);
+      const food = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), foodMaterial);
+      food.scale.y = 0.55;
+      food.position.set(x, 0.63, z);
+      feast.add(food);
+    }
+    const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.14, 0.12, 14), greenMaterial);
+    bowl.position.set(0.18, 0.62, 0.4);
+    feast.add(bowl);
+    feast.visible = false;
+    this.group.add(feast);
+    this.feastVisual = feast;
+
     this.roommateInteractable = {
       id: "roommate",
       kind: "roommate",
@@ -1963,6 +2015,107 @@ export class WorldEnvironment {
     moon.scale.set(42, 42, 1);
     this.nightGroup.add(moon);
     this.moon = moon;
+
+    // Streetlights follow the real paths between the hostels, academic block
+    // and dining hall so the night route is readable without flattening the
+    // darkness. They live in the night group and never duplicate buildings.
+    for (const [x, z] of [
+      [-18, 28.4],
+      [2, 12],
+      [-6, -13],
+      [2, -27.4],
+      [-30, 30.8],
+      [22, 8],
+    ] as const) {
+      this.addNightStreetlight(x, z);
+    }
+
+    this.createMealPickup();
+  }
+
+  private addNightStreetlight(x: number, z: number): void {
+    const poleMaterial = new THREE.MeshStandardMaterial({
+      color: 0x30363a,
+      roughness: 0.55,
+      metalness: 0.45,
+    });
+    const glowMaterial = new THREE.MeshBasicMaterial({ color: 0xffe0a1 });
+    this.disposables.push(poleMaterial, glowMaterial);
+
+    const group = new THREE.Group();
+    group.name = "night-streetlight";
+    group.position.set(x, 0, z);
+
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.26, 10), poleMaterial);
+    base.position.y = 0.13;
+    group.add(base);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.09, 4.6, 8), poleMaterial);
+    pole.position.y = 2.3;
+    group.add(pole);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.07, 0.07), poleMaterial);
+    arm.position.set(0.38, 4.58, 0);
+    group.add(arm);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.16, 0.3), poleMaterial);
+    head.position.set(0.8, 4.5, 0);
+    group.add(head);
+    const globe = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), glowMaterial);
+    globe.position.set(0.8, 4.4, 0);
+    group.add(globe);
+
+    const light = new THREE.PointLight(0xffd59a, 11, 15, 2);
+    light.position.set(0.8, 4.3, 0);
+    group.add(light);
+    this.nightGroup.add(group);
+  }
+
+  private createMealPickup(): void {
+    const group = new THREE.Group();
+    group.name = "mess-meal-pickup";
+    const trayMaterial = new THREE.MeshStandardMaterial({
+      color: 0xd7c39a,
+      roughness: 0.35,
+      metalness: 0.5,
+      emissive: 0x6b4a1e,
+      emissiveIntensity: 0.45,
+    });
+    const coverMaterial = new THREE.MeshStandardMaterial({
+      color: 0xe4c98f,
+      roughness: 0.28,
+      metalness: 0.65,
+      emissive: 0xffc966,
+      emissiveIntensity: 0.55,
+    });
+    this.disposables.push(trayMaterial, coverMaterial);
+    const tray = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.5, 0.06, 18), trayMaterial);
+    tray.position.set(-4, 1.2, -43.42);
+    group.add(tray);
+    const cover = new THREE.Mesh(new THREE.SphereGeometry(0.38, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), coverMaterial);
+    cover.position.set(-4, 1.23, -43.42);
+    group.add(cover);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), coverMaterial);
+    knob.position.set(-4, 1.63, -43.42);
+    group.add(knob);
+    const glow = new THREE.PointLight(0xffce7a, 3.2, 5, 2);
+    glow.position.set(-4, 1.8, -43.1);
+    group.add(glow);
+    group.visible = false;
+    this.nightGroup.add(group);
+    this.mealPickupVisual = group;
+
+    this.mealInteractable = {
+      id: "mess-meal",
+      kind: "meal",
+      label: "hot meal tray",
+      position: this.mealPoint.clone(),
+      radius: 2.2,
+      active: false,
+    };
+    this.interactables.push(this.mealInteractable);
+  }
+
+  setMealInteractableActive(active: boolean): void {
+    if (this.mealInteractable) this.mealInteractable.active = active;
+    if (this.mealPickupVisual) this.mealPickupVisual.visible = active && this.night;
   }
 
   private addGardenBed(cx: number, cz: number, itemId: GardenItemId): void {
@@ -3493,6 +3646,9 @@ export class WorldEnvironment {
     const glass = this.materials.glass as THREE.MeshStandardMaterial | undefined;
     if (glass) glass.emissiveIntensity = night ? 0.12 : 0.5;
     for (const light of this.houseLights) light.visible = night;
+    if (this.mealPickupVisual) {
+      this.mealPickupVisual.visible = night && this.mealInteractable?.active === true;
+    }
 
     this.setGardenInteractablesActive(night);
     if (night) {
@@ -3550,6 +3706,9 @@ export class WorldEnvironment {
       })),
       roommate: this.roommate?.group.visible ?? false,
       roommateActive: this.roommateInteractable?.active ?? false,
+      roommateCelebrating: this.roommateCelebrating && (this.feastVisual?.visible ?? false),
+      mealActive: this.mealInteractable?.active ?? false,
+      streetlights: this.nightGroup.children.filter((child) => child.name === "night-streetlight").length,
       houseNpcs: this.houseNpcs.map((npc) => ({
         id: npc.id,
         visible: npc.rig.group.visible,
@@ -3579,7 +3738,14 @@ export class WorldEnvironment {
     const rig = this.roommate;
     if (!info || !rig) return;
     const house = getHouse(houseId);
-    if (house) setRigUniform(rig, house.color);
+    if (house) {
+      setRigUniform(rig, house.color);
+      for (const friend of this.roommateFriends) setRigUniform(friend, house.color);
+    }
+    if (this.roommateCelebrating) {
+      this.positionRoommateCelebration(info);
+      return;
+    }
     rig.group.position.set(info.roommatePoint.x, 0, info.roommatePoint.z);
     rig.group.rotation.y = Math.PI;
     rig.group.visible = true;
@@ -3587,6 +3753,11 @@ export class WorldEnvironment {
       this.roommateTag.position.set(info.roommatePoint.x, 2.22, info.roommatePoint.z);
       this.roommateTag.visible = true;
     }
+    this.roommateFriends.forEach((friend, index) => {
+      friend.group.visible = false;
+      friend.group.position.set(info.center.x + 1.1 + index * 0.5, 0, info.roommatePoint.z);
+    });
+    if (this.feastVisual) this.feastVisual.visible = false;
     if (this.roommateInteractable) {
       this.roommateInteractable.position.set(info.roommatePoint.x, 0, info.roommatePoint.z);
       this.roommateInteractable.active = true;
@@ -3596,7 +3767,47 @@ export class WorldEnvironment {
   hideRoommate(): void {
     if (this.roommate) this.roommate.group.visible = false;
     if (this.roommateTag) this.roommateTag.visible = false;
+    for (const friend of this.roommateFriends) friend.group.visible = false;
+    if (this.feastVisual) this.feastVisual.visible = false;
     if (this.roommateInteractable) this.roommateInteractable.active = false;
+  }
+
+  setRoommateCelebration(active: boolean): void {
+    this.roommateCelebrating = active;
+    if (!active) {
+      if (this.feastVisual) this.feastVisual.visible = false;
+      for (const friend of this.roommateFriends) friend.group.visible = false;
+      if (this.roommateTag) this.roommateTag.visible = true;
+      return;
+    }
+    if (!this.night) return;
+    const info = this.houseHostels[this.activeHouseId];
+    if (!info) return;
+    this.positionRoommateCelebration(info);
+  }
+
+  private positionRoommateCelebration(info: HouseHostelInfo): void {
+    const rigs = [this.roommate, ...this.roommateFriends].filter(
+      (rig): rig is CharacterRig => Boolean(rig),
+    );
+    const slots = [
+      { x: info.center.x - 1.0, z: 37.5, rot: 0 },
+      { x: info.center.x + 1.0, z: 37.5, rot: 0 },
+      { x: info.center.x, z: 39.15, rot: Math.PI },
+    ];
+    rigs.forEach((rig, index) => {
+      const slot = slots[index] ?? slots[0];
+      rig.group.position.set(slot.x, 0, slot.z);
+      rig.group.rotation.y = slot.rot;
+      rig.group.visible = true;
+      rig.head.rotation.x = -0.1;
+    });
+    if (this.roommateTag) this.roommateTag.visible = false;
+    if (this.roommateInteractable) this.roommateInteractable.active = false;
+    if (this.feastVisual) {
+      this.feastVisual.position.set(info.center.x, 0, 38.25);
+      this.feastVisual.visible = true;
+    }
   }
 
   showMarkerAt(point: THREE.Vector3 | null): void {
@@ -3724,6 +3935,17 @@ export class WorldEnvironment {
     if (this.roommate?.group.visible) {
       this.roommate.group.position.y = Math.sin(elapsed * 1.4) * 0.008;
       this.roommate.torso.rotation.z = Math.sin(elapsed * 0.8) * 0.012;
+    }
+    if (this.roommateCelebrating) {
+      [this.roommate, ...this.roommateFriends].forEach((rig, index) => {
+        if (!rig?.group.visible) return;
+        const beat = elapsed * 4.6 + index * 1.2;
+        rig.group.position.y = Math.abs(Math.sin(beat)) * 0.035;
+        rig.leftArm.rotation.x = -1.15 + Math.sin(beat) * 0.22;
+        rig.rightArm.rotation.x = -0.95 + Math.sin(beat + 1.4) * 0.28;
+        rig.head.rotation.x = -0.08 + Math.sin(beat * 0.5) * 0.06;
+        rig.torso.rotation.z = Math.sin(beat * 0.5) * 0.025;
+      });
     }
 
     if (this.night) this.updatePatrols(dt, playerPosition, crouching, noise);

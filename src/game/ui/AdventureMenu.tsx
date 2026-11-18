@@ -1,10 +1,11 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, ChevronRight, Clock3, DoorOpen, Eye, Flag, Moon, ShieldCheck, Trophy, Users } from "lucide-react";
+import { ArrowLeft, ChevronRight, Clock3, DoorOpen, Eye, Flag, Moon, MoonStar, ShieldCheck, Trophy, Users, Utensils } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import type { GameEngine } from "../core/GameEngine";
 import type { GameUIState } from "../core/types";
 import { CLASS_BUNK_DIFFICULTIES, type ClassBunkDifficulty } from "../data/classBunk";
+import { MESS_MEAL_DIFFICULTIES, type MessMealDifficulty } from "../data/messMeal";
 import { escapeLevelNumber, totalEscapeXp } from "../data/escape";
 import { getHouse } from "../data/houses";
 import { HouseEmblem } from "./HouseVisuals";
@@ -25,6 +26,7 @@ export function AdventureMenu({
   const nightDone = profile?.achievements.includes("midnight-garden") ?? false;
   const nightActive = state.night?.active ?? false;
   const [bunkDifficulty, setBunkDifficulty] = useState<ClassBunkDifficulty>("normal");
+  const [messDifficulty, setMessDifficulty] = useState<MessMealDifficulty>("normal");
 
   return (
     <div
@@ -68,6 +70,73 @@ export function AdventureMenu({
         </header>
 
         <div className="mt-6 grid gap-3 md:grid-cols-2">
+          <div
+            data-testid="adventure-mess-meal"
+            className="group relative overflow-hidden border border-[#78a9c4]/40 bg-[linear-gradient(122deg,#0b141d_0%,#0d1c26_52%,#101a16_100%)] p-5 text-left transition hover:border-[#a9d6ee]/70 sm:p-7 md:col-span-2"
+          >
+            <span className="absolute right-5 top-5 border border-[#9ed3ee]/30 bg-[#9ed3ee]/10 px-2 py-1 font-ui text-[8px] uppercase tracking-[0.24em] text-[#cdeaf9]/80">
+              PLAYABLE · NIGHT
+            </span>
+            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+              <div className="max-w-2xl">
+                <span className="flex size-11 items-center justify-center rounded-full border border-[#9ed3ee]/45 text-[#cdeaf9]">
+                  <Utensils className="size-5" />
+                </span>
+                <h3 className="mt-4 font-display text-[clamp(2.1rem,5vw,3.4rem)] leading-none text-[#edf6fb]">
+                  MESS MEAL SNEAK
+                </h3>
+                <p className="mt-2 font-ui text-[12px] leading-relaxed text-[#d8e8f1]/72">
+                  Slip out after lights-out, collect a hot meal and bring it home to your roommates.
+                </p>
+                <p className="mt-3 max-w-xl font-ui text-[10px] leading-relaxed text-[#d8e8f1]/42">
+                  The real campus at night: hostel windows, streetlights and patrolling teachers. A
+                  teacher who sees you walks over, pauses the run and sends you to Principal Moinm
+                  Rahman. Resume after the referral with your meal still in hand.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 font-ui text-[8px] uppercase tracking-[0.16em] text-[#b9dced]/60">
+                  <span className="inline-flex items-center gap-1.5"><MoonStar className="size-3" /> Night campus</span>
+                  <span className="inline-flex items-center gap-1.5"><Eye className="size-3" /> Real line-of-sight patrols</span>
+                  <span className="inline-flex items-center gap-1.5"><Utensils className="size-3" /> Roommate celebration</span>
+                </div>
+              </div>
+
+              <div className="w-full shrink-0 md:w-[19rem]">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(Object.keys(MESS_MEAL_DIFFICULTIES) as MessMealDifficulty[]).map((difficulty) => {
+                    const config = MESS_MEAL_DIFFICULTIES[difficulty];
+                    const selected = messDifficulty === difficulty;
+                    return (
+                      <button
+                        key={difficulty}
+                        type="button"
+                        onClick={() => setMessDifficulty(difficulty)}
+                        aria-pressed={selected}
+                        className={`border px-2 py-2 font-ui text-[9px] uppercase tracking-[0.16em] transition ${
+                          selected
+                            ? "border-[#a9d6ee]/80 bg-[#a9d6ee]/15 text-[#e2f4ff]"
+                            : "border-[#d8e8f1]/15 text-[#d8e8f1]/50 hover:border-[#d8e8f1]/35"
+                        }`}
+                      >
+                        {config.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 min-h-8 font-ui text-[9px] leading-relaxed text-[#d8e8f1]/45">
+                  {MESS_MEAL_DIFFICULTIES[messDifficulty].detail}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => engine?.startMessMeal(messDifficulty)}
+                  data-testid="adventure-mess-meal-start"
+                  className="mt-2 inline-flex w-full items-center justify-center gap-2 border border-[#8fc7e8]/65 bg-[#8fc7e8]/12 px-4 py-3 font-ui text-[10px] uppercase tracking-[0.22em] text-[#e2f4ff] transition hover:border-[#bfe5fa]/90 hover:bg-[#8fc7e8]/22"
+                >
+                  <Moon className="size-3.5" /> Start night run · {MESS_MEAL_DIFFICULTIES[messDifficulty].label}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div
             data-testid="adventure-class-bunk"
             className="group relative overflow-hidden border border-[#c9a45d]/40 bg-[linear-gradient(125deg,#1a1a10_0%,#12180f_58%,#0d1512_100%)] p-5 text-left transition hover:border-[#e8cc8e]/75 sm:p-7 md:col-span-2"

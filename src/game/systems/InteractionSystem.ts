@@ -64,6 +64,8 @@ export class InteractionSystem {
         return "Talk to your roommate";
       case "garden":
         return `${interactable.verb ?? "Pick"} ${interactable.label.toLowerCase()}`;
+      case "meal":
+        return `Collect ${interactable.label}`;
       default:
         return "Interact";
     }

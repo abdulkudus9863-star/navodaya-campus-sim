@@ -21,6 +21,13 @@ import {
   isClassBunkDifficulty,
   type ClassBunkSave,
 } from "../data/classBunk";
+import {
+  MESS_MEAL_CHECKPOINTS,
+  emptyMessMealSave,
+  isMessMealDifficulty,
+  type MessMealSave,
+  type MessMealStatus,
+} from "../data/messMeal";
 import { isTeacherId } from "../data/teachers";
 import { getStudent, validateCharacterSelection } from "../data/students";
 import { sanitizeExploration } from "../systems/ExplorationSystem";
@@ -173,6 +180,65 @@ function sanitizeClassBunk(raw: unknown): ClassBunkSave {
   };
 }
 
+function sanitizeMessMeal(raw: unknown): MessMealSave {
+  const fallback = emptyMessMealSave();
+  if (!raw || typeof raw !== "object") return fallback;
+  const source = raw as Partial<MessMealSave>;
+  const difficulty = isMessMealDifficulty(source.difficulty) ? source.difficulty : "normal";
+  const checkpointIds = Array.isArray(source.checkpointIds)
+    ? Array.from(
+        new Set(
+          source.checkpointIds.filter((id): id is string =>
+            MESS_MEAL_CHECKPOINTS.some((checkpoint) => checkpoint.id === id),
+          ),
+        ),
+      )
+    : [];
+  const completedCheckpointIds = Array.isArray(source.completedCheckpointIds)
+    ? Array.from(
+        new Set(
+          source.completedCheckpointIds.filter((id): id is string =>
+            checkpointIds.includes(id),
+          ),
+        ),
+      )
+    : [];
+  let status: MessMealStatus =
+    source.status === "return" ||
+    source.status === "caught" ||
+    source.status === "completed" ||
+    source.status === "failed" ||
+    source.status === "ended"
+      ? source.status
+      : "to-mess";
+  const mealCollected = source.mealCollected === true;
+  const active =
+    source.active === true &&
+    status !== "completed" &&
+    status !== "failed" &&
+    status !== "ended";
+  if (active && status === "to-mess" && mealCollected) status = "return";
+  if (active && status === "return" && !mealCollected) status = "to-mess";
+  return {
+    active,
+    difficulty,
+    status: active
+      ? status
+      : source.status === "completed"
+        ? "completed"
+        : source.status === "failed"
+          ? "failed"
+          : "ended",
+    mealCollected,
+    checkpointIds: active ? checkpointIds : [],
+    completedCheckpointIds: active ? completedCheckpointIds : [],
+    suspicion: active ? clamp(Math.round(num(source.suspicion, 0)), 0, 99) : 0,
+    caughtBy: active && isTeacherId(source.caughtBy) ? source.caughtBy : null,
+    completedOnce: source.completedOnce === true || (!active && status === "completed"),
+    resultSeen: source.resultSeen !== false,
+  };
+}
+
 function sanitizeNight(raw: unknown): NightSave {
   const source = (raw ?? {}) as Partial<NightSave>;
   const collectedRaw = Array.isArray(source.collected) ? source.collected : [];
@@ -304,6 +370,7 @@ function sanitizeSave(raw: unknown): SaveData | null {
     teachers: sanitizeTeachers(source.teachers),
     principalReferral: sanitizePrincipalReferral(source.principalReferral),
     classBunk: sanitizeClassBunk(source.classBunk),
+    messMeal: sanitizeMessMeal(source.messMeal),
   };
 }
 

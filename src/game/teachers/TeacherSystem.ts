@@ -150,6 +150,19 @@ export class TeacherSystem {
     this.group.visible = this.enabled;
   }
 
+  /** Night difficulty scales the real patrol speed of every active teacher. */
+  setSpeedScale(scale: number): void {
+    const safe = Math.max(0.4, Math.min(2, scale));
+    for (const controller of this.controllers.values()) controller.speedScale = safe;
+  }
+
+  /** Public catch-approach used by MESS MEAL SNEAK while the player is frozen. */
+  approachCaughtPlayer(id: TeacherId, dt: number, x: number, z: number): boolean {
+    const controller = this.controllers.get(id);
+    if (!controller) return false;
+    return controller.approachCaughtPlayer(dt, x, z, this.world.colliders, this.world.bounds).arrived;
+  }
+
   setEnabled(enabled: boolean): void {
     if (this.enabled === enabled) return;
     this.enabled = enabled;
