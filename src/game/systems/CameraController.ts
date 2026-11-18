@@ -35,6 +35,7 @@ export class CameraController {
   private manualLookCooldown = 0;
   private followSettle = 0;
   private wasMoving = false;
+  private currentFov = 55;
 
   private overviewYaw = 0;
   private overviewPitch = 0.62;
@@ -57,6 +58,13 @@ export class CameraController {
 
   resize(aspect: number): void {
     this.camera.aspect = aspect;
+    this.camera.updateProjectionMatrix();
+  }
+
+  /** Keeps the sky dome inside the far plane while view distance shapes fog. */
+  setViewDistance(viewDistance: number): void {
+    const safe = THREE.MathUtils.clamp(viewDistance, 0.6, 1.4);
+    this.camera.far = 332 + safe * 68;
     this.camera.updateProjectionMatrix();
   }
 
@@ -145,6 +153,7 @@ export class CameraController {
     invertY: boolean,
     moving: boolean,
     snap = false,
+    speedRatio = 0,
   ): void {
     if (input) {
       const look = input.consumeLook();
@@ -191,10 +200,10 @@ export class CameraController {
 
     this.smoothedYaw = snap
       ? this.yaw
-      : this.smoothedYaw + shortest(this.smoothedYaw, this.yaw) * Math.min(1, dt * 16);
+      : this.smoothedYaw + shortest(this.smoothedYaw, this.yaw) * damp(16, dt);
     this.smoothedPitch = snap
       ? this.pitch
-      : this.smoothedPitch + (this.pitch - this.smoothedPitch) * Math.min(1, dt * 16);
+      : this.smoothedPitch + (this.pitch - this.smoothedPitch) * damp(16, dt);
 
     const targetY = playerPosition.y + 1.48;
     const target = new THREE.Vector3(playerPosition.x, targetY, playerPosition.z);
@@ -224,7 +233,7 @@ export class CameraController {
     if (snap || collisionDistance < this.currentDistance) {
       this.currentDistance = collisionDistance;
     } else {
-      this.currentDistance += (requested - this.currentDistance) * Math.min(1, dt * 7);
+      this.currentDistance += (requested - this.currentDistance) * damp(7, dt);
     }
     const renderedDistance = Math.min(this.currentDistance, collisionDistance);
     const desired = target.clone().add(direction.multiplyScalar(renderedDistance));
@@ -235,8 +244,16 @@ export class CameraController {
       this.currentLook.copy(target);
       this.hasFollowed = true;
     } else {
-      this.camera.position.lerp(desired, Math.min(1, dt * (obstructed ? 30 : 18)));
-      this.currentLook.lerp(target, Math.min(1, dt * 15));
+      this.camera.position.lerp(desired, damp(obstructed ? 30 : 18, dt));
+      this.currentLook.lerp(target, damp(15, dt));
+    }
+    // A very small run FOV lift adds speed without the fisheye look of a big
+    // sprint effect. It is smoothed so stopping never snaps the lens.
+    const targetFov = 55 + THREE.MathUtils.clamp(speedRatio, 0, 1) * 4.2;
+    this.currentFov = snap ? targetFov : this.currentFov + (targetFov - this.currentFov) * damp(6, dt);
+    if (Math.abs(this.camera.fov - this.currentFov) > 0.01) {
+      this.camera.fov = this.currentFov;
+      this.camera.updateProjectionMatrix();
     }
     this.camera.lookAt(this.currentLook);
     this.dialogueAnchor = null;
@@ -324,6 +341,10 @@ export class CameraController {
   dispose(): void {
     /* nothing to release */
   }
+}
+
+function damp(lambda: number, dt: number): number {
+  return 1 - Math.exp(-lambda * Math.max(0, Math.min(dt, 0.1)));
 }
 
 function shortest(from: number, to: number): number {

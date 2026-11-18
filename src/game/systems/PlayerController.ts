@@ -18,6 +18,9 @@ const CROUCH_SPEED = 1.85;
 const GRAVITY = 18;
 const JUMP_VELOCITY = 5.4;
 const PLAYER_RADIUS = 0.38;
+const ACCELERATION = 14;
+const DECELERATION = 18;
+const TURN_RATE = 13;
 
 export function collidesAt(x: number, z: number, colliders: BlockCollider[], y = 0): boolean {
   for (const collider of colliders) {
@@ -52,6 +55,8 @@ export class PlayerController {
 
   private walkPhase = 0;
   private stepTimer = 0;
+  private landingImpact = 0;
+  private interactPulse = 0;
 
   constructor(character: CharacterSettings, houseColor?: string) {
     this.character = character;
@@ -85,11 +90,18 @@ export class PlayerController {
     setRigUniform(this.rig, color);
   }
 
+  /** Brief reach gesture used for doors, pickups and interaction prompts. */
+  playInteract(): void {
+    this.interactPulse = 1;
+  }
+
   placeAt(position: THREE.Vector3, rotationY: number): void {
     this.position.set(position.x, Math.max(0, position.y), position.z);
     this.rotationY = rotationY;
     this.velocityY = 0;
     this.grounded = true;
+    this.currentSpeed = 0;
+    this.landingImpact = 0;
     this.rig.group.position.copy(this.position);
     this.rig.group.rotation.y = rotationY;
   }
@@ -111,7 +123,13 @@ export class PlayerController {
     const magnitude = Math.min(1, Math.hypot(move.x, move.y));
     const baseSpeed = this.crouching ? CROUCH_SPEED : input.running ? RUN_SPEED : WALK_SPEED;
     const wantedSpeed = magnitude * baseSpeed;
-    this.currentSpeed = wantedSpeed;
+    this.currentSpeed = damp(
+      this.currentSpeed,
+      wantedSpeed,
+      wantedSpeed > this.currentSpeed ? ACCELERATION : DECELERATION,
+      dt,
+    );
+    if (this.currentSpeed < 0.03) this.currentSpeed = 0;
 
     const forwardX = -Math.sin(cameraYaw);
     const forwardZ = -Math.cos(cameraYaw);
@@ -129,6 +147,8 @@ export class PlayerController {
     this.moving = magnitude > 0.08;
     this.running = this.moving && input.running && !this.crouching;
 
+    const wasGrounded = this.grounded;
+    const fallSpeed = this.velocityY;
     if (input.consumeJump() && this.grounded) {
       this.velocityY = JUMP_VELOCITY;
       this.grounded = false;
@@ -138,8 +158,8 @@ export class PlayerController {
       heightAt ? heightAt(x, z, this.position.y) : 0;
 
     // Axis-separated movement gives natural wall sliding.
-    const stepX = dirX * wantedSpeed * dt;
-    const stepZ = dirZ * wantedSpeed * dt;
+    const stepX = dirX * this.currentSpeed * dt;
+    const stepZ = dirZ * this.currentSpeed * dt;
     if (stepX !== 0) {
       const nextX = THREE.MathUtils.clamp(this.position.x + stepX, -bounds, bounds);
       if (!collidesAt(nextX, this.position.z, colliders, this.position.y)) this.position.x = nextX;
@@ -167,45 +187,67 @@ export class PlayerController {
     if (this.position.y <= groundY) {
       this.position.y = groundY;
       this.velocityY = 0;
+      if (!wasGrounded && fallSpeed < -1.5) {
+        this.landingImpact = Math.min(1, -fallSpeed / 8.5);
+      }
       this.grounded = true;
     }
 
     if (this.moving) {
       const targetRotation = Math.atan2(dirX, dirZ);
-      this.rotationY += shortestAngle(this.rotationY, targetRotation) * Math.min(1, dt * 12);
+      const turnRate = TURN_RATE - Math.min(4, this.currentSpeed * 0.5);
+      this.rotationY += shortestAngle(this.rotationY, targetRotation) * Math.min(1, dt * turnRate);
     }
 
     this.rig.group.position.copy(this.position);
     this.rig.group.rotation.y = this.rotationY;
-    const crouchScale = this.crouching ? 0.78 : 1;
-    this.rig.group.scale.y = damp(this.rig.group.scale.y, crouchScale, 10, dt);
-    this.animate(dt, wantedSpeed);
+    const crouchScale = this.crouching ? 0.78 : 1 - this.landingImpact * 0.075;
+    const groundScale = 1 + this.landingImpact * 0.035;
+    this.rig.group.scale.y = damp(this.rig.group.scale.y, crouchScale, 14, dt);
+    this.rig.group.scale.x = damp(this.rig.group.scale.x, groundScale, 14, dt);
+    this.rig.group.scale.z = damp(this.rig.group.scale.z, groundScale, 14, dt);
+    this.animate(dt);
   }
 
-  private animate(dt: number, speed: number): void {
+  private animate(dt: number): void {
     const rig = this.rig;
-    const intensity = Math.min(1, speed / RUN_SPEED);
-    if (this.moving) {
-      this.walkPhase += dt * (6 + intensity * 6);
-      const swing = Math.sin(this.walkPhase) * (0.35 + intensity * 0.45);
-      rig.leftLeg.rotation.x = swing;
-      rig.rightLeg.rotation.x = -swing;
-      rig.leftArm.rotation.x = -swing * 0.8;
-      rig.rightArm.rotation.x = swing * 0.8;
-      rig.torso.rotation.y = Math.sin(this.walkPhase) * 0.05;
-      rig.group.position.y = this.position.y + Math.abs(Math.sin(this.walkPhase)) * 0.035 * intensity;
-      rig.head.rotation.z = Math.sin(this.walkPhase) * 0.015;
-      this.stepTimer -= dt * (this.running ? 1.7 : 1);
-      if (this.stepTimer <= 0) {
-        this.stepTimer = 0.34;
-        this.onFootstep?.();
+    this.landingImpact = Math.max(0, this.landingImpact - dt * 3.8);
+    this.interactPulse = Math.max(0, this.interactPulse - dt * 2.4);
+    const intensity = Math.min(1, this.currentSpeed / RUN_SPEED);
+    const land = this.landingImpact;
+    const stride = this.currentSpeed > 0.12 ? this.currentSpeed : 0;
+
+    if (this.moving && stride > 0) {
+      this.walkPhase += dt * (5.4 + intensity * 7.2);
+      const swingAmount = 0.3 + intensity * 0.52;
+      const swing = Math.sin(this.walkPhase) * swingAmount;
+      rig.leftLeg.rotation.x = swing + land * 0.18;
+      rig.rightLeg.rotation.x = -swing + land * 0.18;
+      rig.leftArm.rotation.x = -swing * 0.85;
+      rig.rightArm.rotation.x = swing * 0.85;
+      rig.torso.rotation.y = damp(rig.torso.rotation.y, Math.sin(this.walkPhase) * 0.055, 12, dt);
+      // The feet stay planted on the ground plane; only the torso and head bob.
+      rig.group.position.y = this.position.y;
+      const bob = Math.abs(Math.sin(this.walkPhase)) * 0.02 * intensity;
+      rig.torso.position.y = 1.02 + bob;
+      rig.head.position.y = 1.52 + bob * 0.75 - land * 0.035;
+      rig.head.rotation.z = Math.sin(this.walkPhase) * 0.018;
+      if (this.grounded) {
+        this.stepTimer -= dt;
+        if (this.stepTimer <= 0) {
+          this.stepTimer = this.running ? 0.28 : 0.42;
+          this.onFootstep?.();
+        }
       }
     } else {
-      rig.leftLeg.rotation.x = damp(rig.leftLeg.rotation.x, 0, 8, dt);
-      rig.rightLeg.rotation.x = damp(rig.rightLeg.rotation.x, 0, 8, dt);
-      rig.leftArm.rotation.x = damp(rig.leftArm.rotation.x, 0, 8, dt);
-      rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, 0, 8, dt);
-      rig.torso.rotation.y = damp(rig.torso.rotation.y, 0, 8, dt);
+      rig.leftLeg.rotation.x = damp(rig.leftLeg.rotation.x, land * 0.28, 9, dt);
+      rig.rightLeg.rotation.x = damp(rig.rightLeg.rotation.x, land * 0.28, 9, dt);
+      rig.leftArm.rotation.x = damp(rig.leftArm.rotation.x, 0, 9, dt);
+      rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, 0, 9, dt);
+      rig.torso.rotation.y = damp(rig.torso.rotation.y, 0, 9, dt);
+      rig.torso.position.y = damp(rig.torso.position.y, 1.02 - land * 0.03, 12, dt);
+      rig.head.position.y = damp(rig.head.position.y, 1.52 - land * 0.055, 12, dt);
+      rig.head.rotation.z = damp(rig.head.rotation.z, 0, 8, dt);
       this.walkPhase = 0;
       this.stepTimer = 0;
     }
@@ -218,6 +260,22 @@ export class PlayerController {
       rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, -0.6 - tuck, 10, dt);
     }
 
+    if (this.grounded && this.interactPulse > 0) {
+      const reach = Math.sin((1 - this.interactPulse) * Math.PI);
+      rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, -1.05 * reach, 18, dt);
+      rig.rightArm.rotation.z = damp(rig.rightArm.rotation.z, -0.18 * reach, 18, dt);
+    } else {
+      rig.rightArm.rotation.z = damp(rig.rightArm.rotation.z, 0, 10, dt);
+    }
+
+    const lean = this.grounded
+      ? this.running
+        ? 0.09
+        : this.moving
+          ? 0.035
+          : 0
+      : -0.04;
+    rig.torso.rotation.x = damp(rig.torso.rotation.x, lean, 9, dt);
     rig.head.rotation.y = damp(rig.head.rotation.y, 0, 6, dt);
   }
 

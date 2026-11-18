@@ -1,8 +1,21 @@
 import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { FXAAShader } from "three/examples/jsm/shaders/FXAAShader.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { AudioSystem } from "./AudioSystem";
 import { GameStore } from "./GameStore";
 import { InputController } from "./InputController";
 import { SaveSystem, sanitizeCharacter, sanitizeSettings } from "./SaveSystem";
+import {
+  QUALITY_PROFILES,
+  clampNumber,
+  nextLowerQuality,
+  qualityProfile,
+  resolveAutoQuality,
+} from "./graphics";
 import {
   DEFAULT_CHARACTER,
   MISSION_STEPS,
@@ -17,7 +30,9 @@ import {
   type NoticeView,
   type PlayerProfileSave,
   type Quality,
+  type QualityPreference,
   type SaveData,
+  type ShadowQuality,
 } from "./types";
 import { CameraController } from "../systems/CameraController";
 import { InteractionSystem } from "../systems/InteractionSystem";
@@ -109,7 +124,12 @@ export const NOTICE_CONTENT: NoticeView = {
   ],
 };
 
-const SKY_FOG: Record<Quality, number> = { low: 0.0095, medium: 0.0074, high: 0.0058 };
+const SHADOW_QUALITY_TO_SIZE: Record<ShadowQuality, number> = {
+  off: 0,
+  low: 512,
+  medium: 1024,
+  high: 2048,
+};
 
 export class GameEngine {
   private container: HTMLElement;
@@ -117,6 +137,9 @@ export class GameEngine {
   private saveSystem = new SaveSystem();
   private scene = new THREE.Scene();
   private renderer: THREE.WebGLRenderer | null = null;
+  private composer: EffectComposer | null = null;
+  private fxaaPass: ShaderPass | null = null;
+  private environmentTexture: THREE.Texture | null = null;
   private cameraController: CameraController;
   private world: WorldEnvironment;
   private player: PlayerController;
@@ -183,6 +206,13 @@ export class GameEngine {
   private elapsed = 0;
   private playtime = 0;
   private quality: Quality;
+  private autoQuality: Quality;
+  private autoAdjusted = false;
+  private highFpsSeconds = 0;
+  private lastRenderWidth = 0;
+  private lastRenderHeight = 0;
+  private lastRenderRatio = 0;
+  private lastShadowType: THREE.ShadowMapType | null = null;
   private disposed = false;
   private initialized = false;
   private initError: string | null = null;
@@ -195,15 +225,30 @@ export class GameEngine {
   private fpsTime = 0;
   private fpsFrames = 0;
   private lowFpsSeconds = 0;
-  private autoAdjusted = false;
 
   constructor(container: HTMLElement, store: GameStore) {
     this.container = container;
     this.store = store;
     const state = store.getState();
-    this.quality = state.settings.quality;
+    this.quality =
+      state.settings.quality === "auto"
+        ? resolveAutoQuality()
+        : state.settings.quality;
+    this.autoQuality = this.quality;
+    const initialSettings = { ...state.settings };
+    if (!state.hasSave && initialSettings.quality === "auto") {
+      const profile = qualityProfile(this.quality);
+      initialSettings.shadowQuality =
+        this.quality === "low" ? "low" : this.quality === "medium" ? "medium" : "high";
+      initialSettings.textureQuality = profile.texture;
+      initialSettings.antialias = profile.antialias;
+      initialSettings.effectsQuality = profile.effects;
+      initialSettings.renderScale = 1;
+      initialSettings.viewDistance = 1;
+      store.setSettings(initialSettings);
+    }
 
-    this.world = new WorldEnvironment();
+    this.world = new WorldEnvironment(initialSettings.textureQuality);
     this.scene.add(this.world.group);
     this.player = new PlayerController(state.character);
     this.scene.add(this.player.rig.group);
@@ -220,18 +265,27 @@ export class GameEngine {
     };
 
     this.scene.background = new THREE.Color("#c6b69a");
-    this.scene.fog = new THREE.FogExp2(0xccb591, SKY_FOG[this.quality]);
+    this.scene.fog = new THREE.FogExp2(0xccb591, qualityProfile(this.quality).fogDensity);
 
     try {
+      // MSAA is handled by the FXAA post pass so antialiasing can be toggled at
+      // runtime and weak phones can skip the extra full-screen pass entirely.
       const renderer = new THREE.WebGLRenderer({
-        antialias: this.quality !== "low",
+        antialias: false,
         powerPreference: "high-performance",
+        stencil: false,
       });
       renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.info.autoReset = false;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.02;
-      renderer.shadowMap.enabled = this.quality !== "low";
-      renderer.shadowMap.type = THREE.PCFShadowMap;
+      renderer.toneMappingExposure = 1.06;
+      renderer.shadowMap.enabled = initialSettings.shadowQuality !== "off";
+      renderer.shadowMap.type =
+        initialSettings.shadowQuality === "high"
+          ? THREE.PCFSoftShadowMap
+          : initialSettings.shadowQuality === "medium"
+            ? THREE.PCFShadowMap
+            : THREE.BasicShadowMap;
       renderer.domElement.style.display = "block";
       renderer.domElement.style.width = "100%";
       renderer.domElement.style.height = "100%";
@@ -240,14 +294,42 @@ export class GameEngine {
       renderer.domElement.setAttribute("aria-label", "Navodaya campus, interactive 3D view");
       this.renderer = renderer;
       container.appendChild(renderer.domElement);
+
+      // A neutral image-based light layer gives glass, brass and painted metal
+      // a believable response without shipping HDR files.
+      try {
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const room = new RoomEnvironment();
+        const target = pmrem.fromScene(room, 0.04);
+        this.environmentTexture = target.texture;
+        this.scene.environment = target.texture;
+        this.scene.environmentIntensity = 0.42;
+        room.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            object.geometry.dispose();
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            for (const material of materials) material.dispose();
+          }
+        });
+        pmrem.dispose();
+      } catch {
+        /* environment lighting is an enhancement; direct lights still work */
+      }
     } catch (error) {
       this.initError = error instanceof Error ? error.message : "WebGL could not start";
     }
 
+    this.setupComposer();
+    this.cameraController.setViewDistance(initialSettings.viewDistance);
     this.applySize();
     this.input.attach(rendererCanvas(this.renderer));
     this.input.setEnabled(false);
-    this.world.setQuality(this.quality);
+    this.world.setGraphics(
+      this.quality,
+      initialSettings.shadowQuality,
+      initialSettings.textureQuality,
+    );
+    this.applyRenderState();
     window.addEventListener("keydown", this.handleGlobalKeyDown);
     window.addEventListener("pagehide", this.handlePageHide);
     document.addEventListener("visibilitychange", this.handleVisibility);
@@ -259,17 +341,90 @@ export class GameEngine {
     return width / height;
   }
 
+  private setupComposer(): void {
+    if (!this.renderer) return;
+    const composer = new EffectComposer(this.renderer);
+    composer.addPass(new RenderPass(this.scene, this.cameraController.camera));
+    composer.addPass(new OutputPass());
+    const fxaa = new ShaderPass(FXAAShader);
+    fxaa.material.uniforms.resolution.value.set(1, 1);
+    composer.addPass(fxaa);
+    this.composer = composer;
+    this.fxaaPass = fxaa;
+  }
+
   private applySize(): void {
     const width = this.container.clientWidth || 1;
     const height = this.container.clientHeight || 1;
     if (!this.renderer) return;
-    const ratio = Math.min(
-      window.devicePixelRatio || 1,
-      this.quality === "high" ? 2 : this.quality === "medium" ? 1.5 : 1,
-    );
+    const settings = this.store.getState().settings;
+    const profile = qualityProfile(this.quality);
+    const scale = clampNumber(settings.renderScale, 0.6, 1);
+    // Antialiasing works as a supersampling ceiling as well as an FXAA toggle;
+    // disabling it lets the weakest phones render at native CSS pixels.
+    const antialiasCap = settings.antialias ? profile.dprCap : 1;
+    const ratio = Math.min(window.devicePixelRatio || 1, antialiasCap) * scale;
+    const unchanged =
+      width === this.lastRenderWidth &&
+      height === this.lastRenderHeight &&
+      Math.abs(ratio - this.lastRenderRatio) < 0.0001;
+    if (unchanged) return;
+    this.lastRenderWidth = width;
+    this.lastRenderHeight = height;
+    this.lastRenderRatio = ratio;
     this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(width, height, false);
+    if (this.composer) {
+      this.composer.setPixelRatio(ratio);
+      this.composer.setSize(width, height);
+      this.fxaaPass?.material.uniforms.resolution.value.set(
+        1 / Math.max(1, width * ratio),
+        1 / Math.max(1, height * ratio),
+      );
+    }
     this.cameraController.resize(width / height);
+  }
+
+  private applyRenderState(): void {
+    if (!this.renderer) return;
+    const settings = this.store.getState().settings;
+    const shadowEnabled = settings.shadowQuality !== "off";
+    const shadowType =
+      settings.shadowQuality === "high"
+        ? THREE.PCFSoftShadowMap
+        : settings.shadowQuality === "medium"
+          ? THREE.PCFShadowMap
+          : THREE.BasicShadowMap;
+    if (
+      this.renderer.shadowMap.enabled !== shadowEnabled ||
+      this.lastShadowType !== shadowType
+    ) {
+      this.renderer.shadowMap.enabled = shadowEnabled;
+      this.renderer.shadowMap.type = shadowType;
+      this.lastShadowType = shadowType;
+      this.scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          for (const material of materials) material.needsUpdate = true;
+        }
+      });
+    }
+    this.renderer.toneMappingExposure =
+      settings.effectsQuality === "high" ? 1.06 : settings.effectsQuality === "medium" ? 1.04 : 1.01;
+    if (this.fxaaPass) this.fxaaPass.enabled = settings.antialias;
+    this.cameraController.setViewDistance(settings.viewDistance);
+    this.world.setEffectsQuality(settings.effectsQuality);
+  }
+
+  private renderFrame(): void {
+    if (!this.renderer) return;
+    const settings = this.store.getState().settings;
+    this.renderer.info.reset();
+    if (this.composer && settings.antialias) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.cameraController.camera);
+    }
   }
 
   async init(): Promise<void> {
@@ -376,9 +531,33 @@ export class GameEngine {
           done: engine.mission.done,
           prompt: state.prompt,
           fps: state.fps,
+          quality: {
+            preference: state.settings.quality,
+            effective: engine.quality,
+            shadow: state.settings.shadowQuality,
+            renderScale: state.settings.renderScale,
+            viewDistance: state.settings.viewDistance,
+            texture: state.settings.textureQuality,
+            antialias: state.settings.antialias,
+            effects: state.settings.effectsQuality,
+          },
+          render: engine.renderer
+            ? {
+                calls: engine.renderer.info.render.calls,
+                triangles: engine.renderer.info.render.triangles,
+                geometries: engine.renderer.info.memory.geometries,
+                textures: engine.renderer.info.memory.textures,
+                pixelRatio: Number(engine.renderer.getPixelRatio().toFixed(3)),
+                shadowMap: engine.renderer.shadowMap.type,
+                fxaa: Boolean(engine.composer && state.settings.antialias),
+              }
+            : null,
           position: { x: engine.player.position.x, y: engine.player.position.y, z: engine.player.position.z },
           playerRotation: engine.player.rotationY,
           grounded: engine.player.grounded,
+          moving: engine.player.moving,
+          running: engine.player.running,
+          speed: Number(engine.player.currentSpeed.toFixed(2)),
           character: engine.store.getState().character,
           camera: {
             yaw: engine.cameraController.yaw,
@@ -462,6 +641,15 @@ export class GameEngine {
       },
       save() {
         return engine.saveGame(false);
+      },
+      graphics(preset?: string, patch?: Partial<GameSettings>) {
+        if (preset) {
+          const allowed: QualityPreference[] = ["low", "medium", "high", "ultra", "auto"];
+          if (!allowed.includes(preset as QualityPreference)) return false;
+          engine.setGraphicsPreset(preset as QualityPreference);
+        }
+        if (patch) engine.setSettings({ ...engine.store.getState().settings, ...patch });
+        return { ...engine.store.getState().settings, effective: engine.quality };
       },
       choosePlan(choice: "explore" | "stealth" | "later") {
         return engine.choosePlan(choice);
@@ -1917,6 +2105,34 @@ export class GameEngine {
     this.audio.uiClick();
   }
 
+  /**
+   * Applies a complete graphics tier. Individual graphics sliders can then be
+   * adjusted on top of it without changing the rest of the player's setup.
+   */
+  setGraphicsPreset(preference: QualityPreference): void {
+    const resolved = preference === "auto" ? resolveAutoQuality() : preference;
+    this.autoQuality = resolved;
+    const profile = QUALITY_PROFILES[resolved];
+    const current = this.store.getState().settings;
+    const shadowQuality: ShadowQuality =
+      resolved === "low" ? "low" : resolved === "medium" ? "medium" : "high";
+    this.applySettings(
+      {
+        ...current,
+        quality: preference,
+        shadowQuality,
+        renderScale: 1,
+        viewDistance: 1,
+        textureQuality: profile.texture,
+        antialias: profile.antialias,
+        effectsQuality: profile.effects,
+      },
+      { announce: true },
+    );
+    this.store.patch({ autoAdjusted: false });
+    this.audio.uiClick();
+  }
+
   setCharacter(raw: CharacterSettings): void {
     const character = sanitizeCharacter(raw);
     this.store.setCharacter(character);
@@ -2704,12 +2920,14 @@ export class GameEngine {
           this.player.position.x,
           this.player.position.z,
         );
+        this.player.playInteract();
         this.audio.uiClick();
         return;
       }
     }
     const target = this.interaction.target;
     if (!target) return;
+    this.player.playInteract();
     if (target.kind === "meal") {
       this.collectMessMeal();
       return;
@@ -2952,6 +3170,11 @@ export class GameEngine {
     this.world.dispose();
     this.removeDebugApi();
     this.scene.clear();
+    this.composer?.dispose();
+    this.composer = null;
+    this.fxaaPass = null;
+    this.environmentTexture?.dispose();
+    this.environmentTexture = null;
     if (this.renderer) {
       this.renderer.dispose();
       this.renderer.forceContextLoss();
@@ -3492,32 +3715,43 @@ export class GameEngine {
 
   private applyAtmosphere(night: boolean): void {
     this.scene.background = new THREE.Color(night ? "#070b14" : "#c6b69a");
+    const viewDistance = Math.max(0.6, this.store.getState().settings.viewDistance);
     this.scene.fog = new THREE.FogExp2(
       night ? 0x08101d : 0xccb591,
-      SKY_FOG[this.quality] * (night ? 1.55 : 1),
+      (qualityProfile(this.quality).fogDensity / viewDistance) * (night ? 1.55 : 1),
     );
+  }
+
+  private autoTunedSettings(base: GameSettings, quality: Quality): GameSettings {
+    const profile = QUALITY_PROFILES[quality];
+    return {
+      ...base,
+      shadowQuality:
+        quality === "low" ? "low" : quality === "medium" ? "medium" : "high",
+      textureQuality: profile.texture,
+      antialias: profile.antialias,
+      effectsQuality: profile.effects,
+    };
   }
 
   private applySettings(settings: GameSettings, options: { announce: boolean }): void {
     this.store.setSettings(settings);
     this.audio.setSettings(settings);
-    if (settings.quality !== this.quality) {
-      this.quality = settings.quality;
-      if (this.renderer) {
-        this.renderer.shadowMap.enabled = settings.quality !== "low";
-        this.scene.traverse((object) => {
-          if (object instanceof THREE.Mesh) {
-            const materials = Array.isArray(object.material) ? object.material : [object.material];
-            for (const material of materials) material.needsUpdate = true;
-          }
-        });
-      }
-      this.world.setQuality(settings.quality);
-      this.applyAtmosphere(this.nightMode);
-      this.applySize();
-      this.store.patch({ quality: settings.quality });
+    const effective =
+      settings.quality === "auto"
+        ? (this.autoQuality ?? resolveAutoQuality())
+        : settings.quality;
+    if (settings.quality !== "auto") this.autoQuality = effective;
+    this.quality = effective;
+    this.world.setGraphics(effective, settings.shadowQuality, settings.textureQuality);
+    this.applyRenderState();
+    this.applyAtmosphere(this.nightMode);
+    this.applySize();
+    this.store.patch({ quality: effective });
+    if (options.announce) {
+      const label = settings.quality === "auto" ? `Auto — ${QUALITY_PROFILES[effective].label}` : QUALITY_PROFILES[effective].label;
+      this.store.toast(`Graphics set to ${label}.`);
     }
-    if (options.announce) this.store.toast(`Graphics set to ${settings.quality}.`);
   }
 
   private showToast(message: string): void {
@@ -3653,6 +3887,8 @@ export class GameEngine {
         state.settings.sensitivity,
         state.settings.invertY,
         this.player.moving,
+        false,
+        this.player.running ? 1 : this.player.moving ? 0.35 : 0,
       );
 
       const teachersEnabled =
@@ -3779,32 +4015,66 @@ export class GameEngine {
     // The 2.5D escape canvas is a complete presentation layer. Freezing the
     // three.js loop behind it keeps mid-range phones and software WebGL stable.
     if (!this.renderer || canvasOverlay) return;
-    this.renderer.render(this.scene, this.cameraController.camera);
+    this.renderFrame();
   };
 
   private measurePerformance(dt: number, simulating: boolean): void {
-    this.fpsTime += dt;
+    // Measure wall-clock rendering throughput, not capped simulation dt. On a
+    // slow device dt is clamped to 50 ms, which would otherwise hide a 10 FPS
+    // renderer and keep Auto from ever reacting.
+    const now = performance.now();
+    if (this.fpsTime <= 0) this.fpsTime = now;
     this.fpsFrames += 1;
-    if (this.fpsTime < 0.5) return;
-    const fps = this.fpsFrames / this.fpsTime;
-    this.fpsTime = 0;
+    const sampleSeconds = (now - this.fpsTime) / 1000;
+    if (sampleSeconds < 0.5) return;
+    const fps = this.fpsFrames / sampleSeconds;
+    this.fpsTime = now;
     this.fpsFrames = 0;
     this.store.patch({ fps: Math.round(fps) });
 
-    if (!simulating || this.autoAdjusted) return;
-    if (fps < 42) {
-      this.lowFpsSeconds += 0.5;
-      if (this.lowFpsSeconds >= 5 && this.quality !== "low") {
-        const next: Quality = this.quality === "high" ? "medium" : "low";
-        this.autoAdjusted = true;
+    const preference = this.store.getState().settings.quality;
+    if (!simulating || preference !== "auto") {
+      this.lowFpsSeconds = 0;
+      this.highFpsSeconds = 0;
+      return;
+    }
+
+    if (fps < 45) {
+      this.lowFpsSeconds += sampleSeconds;
+      this.highFpsSeconds = 0;
+      const next = nextLowerQuality(this.quality);
+      if (this.lowFpsSeconds >= 5 && next) {
         this.lowFpsSeconds = 0;
-        const settings = { ...this.store.getState().settings, quality: next };
+        this.autoQuality = next;
+        this.autoAdjusted = true;
+        const settings = this.autoTunedSettings(this.store.getState().settings, next);
         this.applySettings(settings, { announce: false });
         this.store.patch({ autoAdjusted: true });
-        this.showToast(`Low frame rate detected — graphics set to ${next}. Change it any time in Settings.`);
+        this.showToast(
+          `Low frame rate detected — Auto graphics moved to ${QUALITY_PROFILES[next].label}. You can lock a tier in Settings.`,
+        );
       }
     } else {
-      this.lowFpsSeconds = Math.max(0, this.lowFpsSeconds - 0.5);
+      this.lowFpsSeconds = Math.max(0, this.lowFpsSeconds - sampleSeconds);
+      // Recover one tier after a sustained smooth stretch, but never climb past
+      // the tier Auto picked at startup for this device.
+      if (fps > 57) this.highFpsSeconds += sampleSeconds;
+      else this.highFpsSeconds = Math.max(0, this.highFpsSeconds - sampleSeconds);
+      if (this.autoAdjusted && this.highFpsSeconds >= 15) {
+        const startTier = resolveAutoQuality();
+        const order: Quality[] = ["low", "medium", "high", "ultra"];
+        const currentIndex = order.indexOf(this.quality);
+        const ceilingIndex = order.indexOf(startTier);
+        if (currentIndex >= 0 && currentIndex < ceilingIndex) {
+          this.highFpsSeconds = 0;
+          const nextQuality = order[currentIndex + 1];
+          this.autoQuality = nextQuality;
+          this.applySettings(
+            this.autoTunedSettings(this.store.getState().settings, nextQuality),
+            { announce: false },
+          );
+        }
+      }
     }
   }
 }

@@ -164,6 +164,17 @@ export class InputController {
     if (!this.enabled) return { x: 0, y: 0 };
     let x = this.joystick.x;
     let y = this.joystick.y;
+    // A small radial dead zone removes thumb tremor, then an expo curve gives
+    // finer control near the centre and full speed at the rim.
+    const stickMagnitude = Math.hypot(x, y);
+    if (stickMagnitude > 0 && stickMagnitude < 0.12) {
+      x = 0;
+      y = 0;
+    } else if (stickMagnitude > 0) {
+      const response = Math.pow(Math.min(1, (stickMagnitude - 0.12) / 0.88), 1.25) / stickMagnitude;
+      x *= response;
+      y *= response;
+    }
     if (this.keys.has("KeyA") || this.keys.has("ArrowLeft")) x -= 1;
     if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) x += 1;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp")) y += 1;

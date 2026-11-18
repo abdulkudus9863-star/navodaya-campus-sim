@@ -7,8 +7,11 @@ import {
   type NightSave,
   type PlayerProfileSave,
   type PrincipalReferralSave,
-  type Quality,
+  type EffectsQuality,
+  type QualityPreference,
   type SaveData,
+  type ShadowQuality,
+  type TextureQuality,
 } from "./types";
 import { levelFromXp, maxXpForAchievements, validAchievementIds } from "../data/achievements";
 import { DEFAULT_CHARACTER_ID, DEFAULT_HOUSE_ID, isHouseId } from "../data/houses";
@@ -36,7 +39,10 @@ import { TeacherMemoryManager } from "../teachers/TeacherMemoryManager";
 import type { TeacherSave } from "./types";
 
 const KEY = "navodaya.campus.save.v1";
-const QUALITIES: Quality[] = ["low", "medium", "high"];
+const QUALITIES: QualityPreference[] = ["low", "medium", "high", "ultra", "auto"];
+const SHADOW_QUALITIES: ShadowQuality[] = ["off", "low", "medium", "high"];
+const TEXTURE_QUALITIES: TextureQuality[] = ["low", "medium", "high"];
+const EFFECTS_QUALITIES: EffectsQuality[] = ["low", "medium", "high"];
 const UNIFORMS: CharacterSettings["uniform"][] = ["navy", "olive", "maroon"];
 const WORLD_LIMIT = 70;
 const MAX_XP = 1_000_000;
@@ -56,9 +62,22 @@ function num(value: unknown, fallback: number): number {
 export function sanitizeSettings(raw: unknown): GameSettings {
   const source = (raw ?? {}) as Partial<GameSettings>;
   return {
-    quality: QUALITIES.includes(source.quality as Quality)
-      ? (source.quality as Quality)
+    quality: QUALITIES.includes(source.quality as QualityPreference)
+      ? (source.quality as QualityPreference)
       : DEFAULT_SETTINGS.quality,
+    shadowQuality: SHADOW_QUALITIES.includes(source.shadowQuality as ShadowQuality)
+      ? (source.shadowQuality as ShadowQuality)
+      : DEFAULT_SETTINGS.shadowQuality,
+    renderScale: clamp(num(source.renderScale, DEFAULT_SETTINGS.renderScale), 0.6, 1),
+    viewDistance: clamp(num(source.viewDistance, DEFAULT_SETTINGS.viewDistance), 0.6, 1.4),
+    textureQuality: TEXTURE_QUALITIES.includes(source.textureQuality as TextureQuality)
+      ? (source.textureQuality as TextureQuality)
+      : DEFAULT_SETTINGS.textureQuality,
+    antialias:
+      typeof source.antialias === "boolean" ? source.antialias : DEFAULT_SETTINGS.antialias,
+    effectsQuality: EFFECTS_QUALITIES.includes(source.effectsQuality as EffectsQuality)
+      ? (source.effectsQuality as EffectsQuality)
+      : DEFAULT_SETTINGS.effectsQuality,
     sensitivity: clamp(num(source.sensitivity, DEFAULT_SETTINGS.sensitivity), 0.2, 2.5),
     invertY: typeof source.invertY === "boolean" ? source.invertY : DEFAULT_SETTINGS.invertY,
     volume: clamp(num(source.volume, DEFAULT_SETTINGS.volume), 0, 1),

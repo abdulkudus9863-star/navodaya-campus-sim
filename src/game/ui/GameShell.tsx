@@ -82,7 +82,7 @@ export function GameShell({
     const touch = detectTouch();
     const initialSettings = save.ok
       ? save.data.settings
-      : { ...DEFAULT_SETTINGS, quality: (touch ? "medium" : "high") as "medium" | "high" };
+      : { ...DEFAULT_SETTINGS, quality: "auto" as const };
     const instance = new GameStore(save.ok, touch, initialSettings);
     if (save.ok) {
       instance.patch({ character: save.data.character, playtime: Math.round(save.data.playtime) });

@@ -1,4 +1,4 @@
-import { ArrowUp, Footprints, Hand, Pause, Zap } from "lucide-react";
+import { ArrowUp, CircleHelp, Footprints, Hand, Pause, X, Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { GameEngine } from "../core/GameEngine";
@@ -16,6 +16,7 @@ export function MobileControls({
   const joystickPointer = useRef<number | null>(null);
   const [stick, setStick] = useState({ x: 0, y: 0, active: false });
   const [runHeld, setRunHeld] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const lookPointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchDistance = useRef<number | null>(null);
 
@@ -155,6 +156,7 @@ export function MobileControls({
 
       {/* One safe-area-aware right rail keeps every action independent of the HUD. */}
       <div className="pointer-events-none absolute inset-y-0 right-[max(0.75rem,env(safe-area-inset-right))] z-40 flex flex-col items-end justify-between gap-3 py-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="pointer-events-auto flex flex-col items-end gap-2.5">
         <button
           type="button"
           aria-label="Pause game"
@@ -170,6 +172,22 @@ export function MobileControls({
           <Pause className="size-4" strokeWidth={1.8} />
           <span className="label-cinema text-[6px]">Pause</span>
         </button>
+        <button
+          type="button"
+          aria-label="Help and controls"
+          data-testid="mobile-help"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setShowHelp(true);
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+          className="flex size-11 touch-none flex-col items-center justify-center gap-0.5 rounded-full border border-[#e7d3a8]/25 bg-black/40 text-[#efe4cd]/70 backdrop-blur-sm transition active:scale-95 active:border-[#e7c98f] active:text-[#f0ddb4]"
+        >
+          <CircleHelp className="size-4" strokeWidth={1.7} />
+          <span className="label-cinema text-[6px]">Help</span>
+        </button>
+        </div>
 
         <div className="pointer-events-auto flex flex-col items-end gap-2.5">
           <button
@@ -256,6 +274,47 @@ export function MobileControls({
           </button>
         </div>
       </div>
+
+      {showHelp && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Campus controls"
+            className="w-full max-w-sm rounded-sm border border-[#e7d3a8]/25 bg-[#100e0b]/95 p-6 text-foreground shadow-[0_30px_80px_rgba(0,0,0,0.6)]"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="label-cinema text-primary/80">Campus controls</p>
+                <h3 className="mt-2 font-display text-2xl tracking-wide">How to move</h3>
+              </div>
+              <button
+                type="button"
+                aria-label="Close help"
+                onClick={() => setShowHelp(false)}
+                className="rounded-full border border-foreground/15 p-2 text-foreground/70 transition hover:border-primary/60 hover:text-primary"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <dl className="mt-5 space-y-3 font-ui text-xs leading-relaxed text-foreground/80">
+              <div><dt className="text-primary">Move</dt><dd>Drag the left joystick. Push farther to walk faster.</dd></div>
+              <div><dt className="text-primary">Look</dt><dd>Drag anywhere on the right side to orbit the camera.</dd></div>
+              <div><dt className="text-primary">Run / Jump</dt><dd>Hold Run while moving. Tap Jump to clear steps.</dd></div>
+              <div><dt className="text-primary">Interact</dt><dd>Walk up to a glowing prompt, then tap Interact.</dd></div>
+              <div><dt className="text-primary">Crouch</dt><dd>Toggle Crouch to sneak during night missions.</dd></div>
+              <div><dt className="text-primary">Pause</dt><dd>Pause saves your progress and opens the campus menu.</dd></div>
+            </dl>
+            <button
+              type="button"
+              onClick={() => setShowHelp(false)}
+              className="mt-6 w-full rounded-sm border border-primary/60 bg-primary/12 px-5 py-3 font-ui text-xs uppercase tracking-[0.28em] text-primary transition hover:bg-primary/20"
+            >
+              Back to campus
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

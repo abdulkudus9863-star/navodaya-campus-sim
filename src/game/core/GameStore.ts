@@ -54,7 +54,8 @@ export class GameStore {
       hasSave,
       saveBusy: false,
       toast: null,
-      quality: settings?.quality ?? DEFAULT_SETTINGS.quality,
+      quality:
+        settings && settings.quality !== "auto" ? settings.quality : "high",
       autoAdjusted: false,
       isTouch,
       playtime: 0,
@@ -115,7 +116,10 @@ export class GameStore {
   }
 
   setSettings(settings: GameSettings): void {
-    this.patch({ settings, quality: settings.quality });
+    this.patch({
+      settings,
+      ...(settings.quality !== "auto" ? { quality: settings.quality } : {}),
+    });
   }
 
   setCharacter(character: CharacterSettings): void {
@@ -130,7 +134,7 @@ export class GameStore {
     this.patch({
       settings: data.settings,
       character: data.character,
-      quality: data.settings.quality,
+      quality: data.settings.quality === "auto" ? "high" : data.settings.quality,
       hasSave: true,
       playtime: data.playtime,
       escapeSave: data.escape,

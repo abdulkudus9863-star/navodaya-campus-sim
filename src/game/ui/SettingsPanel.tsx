@@ -1,15 +1,61 @@
 import { motion } from "framer-motion";
 import { Check, X } from "lucide-react";
 import type { GameEngine } from "../core/GameEngine";
-import type { GameUIState, Quality } from "../core/types";
+import { QUALITY_PROFILES } from "../core/graphics";
+import type {
+  EffectsQuality,
+  GameUIState,
+  Quality,
+  QualityPreference,
+  ShadowQuality,
+  TextureQuality,
+} from "../core/types";
 import { SKIN_TONES } from "../core/types";
 import { getHouse } from "../data/houses";
 
 const QUALITY_NOTES: Record<Quality, string> = {
-  low: "Fastest — small shadows off, 512px shadow map",
-  medium: "Balanced — 1024px shadows, reduced pixel ratio",
-  high: "Cinematic — 2048px shadows, full resolution",
+  low: "Fastest — minimal shadows and render resolution. Best for older phones.",
+  medium: "Balanced — clear shadows, reduced pixel ratio and point lights.",
+  high: "Crisp — full campus detail, soft shadows and full pixel ratio.",
+  ultra: "Maximum — 4096px soft shadows and the longest view distance.",
 };
+
+const QUALITY_OPTIONS: QualityPreference[] = ["low", "medium", "high", "ultra", "auto"];
+
+function ChoiceRow<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: readonly T[];
+  onChange: (next: T) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+      <span className="font-ui text-xs text-foreground/80">{label}</span>
+      <div className="flex overflow-hidden rounded-sm border border-foreground/12 bg-foreground/10">
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onChange(option)}
+            aria-pressed={value === option}
+            className={`px-2.5 py-1.5 font-ui text-[10px] capitalize transition-colors ${
+              value === option
+                ? "bg-primary/18 text-primary"
+                : "bg-[#14110d] text-foreground/60 hover:text-foreground"
+            }`}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function Toggle({
   checked,
@@ -96,31 +142,107 @@ export function SettingsPanel({
                 {state.fps} fps
               </span>
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden rounded-sm border border-foreground/12 bg-foreground/10">
-              {(["low", "medium", "high"] as Quality[]).map((quality) => (
+            <div className="mt-4 grid grid-cols-5 gap-px overflow-hidden rounded-sm border border-foreground/12 bg-foreground/10">
+              {QUALITY_OPTIONS.map((quality) => (
                 <button
                   key={quality}
                   type="button"
-                  onClick={() => engine?.setSettings({ ...settings, quality })}
-                  className={`px-3 py-3 font-ui text-xs capitalize transition-colors ${
+                  onClick={() => engine?.setGraphicsPreset(quality)}
+                  aria-pressed={settings.quality === quality}
+                  className={`px-1.5 py-3 font-ui text-[11px] capitalize transition-colors ${
                     settings.quality === quality
                       ? "bg-primary/15 text-primary"
                       : "bg-[#14110d] text-foreground/65 hover:bg-[#1a1712] hover:text-foreground"
                   }`}
                 >
-                  {quality}
+                  {quality === "auto" ? "Auto" : quality}
                 </button>
               ))}
             </div>
             <p className="mt-3 font-ui text-[11px] leading-relaxed text-muted-foreground">
-              {QUALITY_NOTES[settings.quality]}
+              {settings.quality === "auto"
+                ? `Auto chose ${QUALITY_PROFILES[state.quality].label} for this device and adjusts down if the frame rate drops. ${QUALITY_NOTES[state.quality]}`
+                : QUALITY_NOTES[settings.quality]}
             </p>
             {state.autoAdjusted && (
               <p className="mt-2 inline-flex items-center gap-2 rounded-sm border border-primary/25 bg-primary/10 px-2.5 py-1.5 font-ui text-[10px] text-primary/90">
                 <Check className="size-3" />
-                Auto-adjusted for a smoother frame rate. You can override it above.
+                Auto-adjusted to {QUALITY_PROFILES[state.quality].label} for a smoother frame rate.
               </p>
             )}
+
+            <div className="mt-5 border-t border-foreground/10 pt-2">
+              <p className="py-2 font-ui text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                Fine tuning
+              </p>
+              <ChoiceRow<ShadowQuality>
+                label="Shadow quality"
+                value={settings.shadowQuality}
+                options={["off", "low", "medium", "high"]}
+                onChange={(shadowQuality) => engine?.setSettings({ ...settings, shadowQuality })}
+              />
+              <label className="block py-2.5">
+                <span className="flex items-center justify-between font-ui text-xs text-foreground/80">
+                  <span>Render resolution</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {Math.round(settings.renderScale * 100)}%
+                  </span>
+                </span>
+                <input
+                  type="range"
+                  min={0.6}
+                  max={1}
+                  step={0.05}
+                  value={settings.renderScale}
+                  onChange={(event) =>
+                    engine?.setSettings({ ...settings, renderScale: Number(event.target.value) })
+                  }
+                  className="cinema-range mt-3"
+                  aria-label="Render resolution"
+                />
+              </label>
+              <label className="block py-2.5">
+                <span className="flex items-center justify-between font-ui text-xs text-foreground/80">
+                  <span>View distance</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {Math.round(settings.viewDistance * 100)}%
+                  </span>
+                </span>
+                <input
+                  type="range"
+                  min={0.6}
+                  max={1.4}
+                  step={0.05}
+                  value={settings.viewDistance}
+                  onChange={(event) =>
+                    engine?.setSettings({ ...settings, viewDistance: Number(event.target.value) })
+                  }
+                  className="cinema-range mt-3"
+                  aria-label="View distance"
+                />
+              </label>
+              <ChoiceRow<TextureQuality>
+                label="Texture quality"
+                value={settings.textureQuality}
+                options={["low", "medium", "high"]}
+                onChange={(textureQuality) => engine?.setSettings({ ...settings, textureQuality })}
+              />
+              <p className="pb-2 font-ui text-[10px] leading-relaxed text-muted-foreground">
+                Filtering updates now; the uploaded texture resolution is chosen when the campus loads.
+              </p>
+              <ChoiceRow<EffectsQuality>
+                label="Effects"
+                value={settings.effectsQuality}
+                options={["low", "medium", "high"]}
+                onChange={(effectsQuality) => engine?.setSettings({ ...settings, effectsQuality })}
+              />
+              <Toggle
+                checked={settings.antialias}
+                onChange={(antialias) => engine?.setSettings({ ...settings, antialias })}
+                label="Anti-aliasing"
+                description="Smooths jagged edges with post-process FXAA and supersampling."
+              />
+            </div>
           </section>
 
           <section className="border-b border-foreground/10 py-6">

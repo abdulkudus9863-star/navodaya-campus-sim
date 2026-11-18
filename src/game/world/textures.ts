@@ -32,19 +32,20 @@ function toTexture(ctx: CanvasRenderingContext2D, repeat = false): THREE.CanvasT
   return texture;
 }
 
-export function grassTexture(): THREE.CanvasTexture {
-  const ctx = canvas2d(512, 512);
+export function grassTexture(size = 512): THREE.CanvasTexture {
+  const ctx = canvas2d(size, size);
   const rand = seededRandom(7);
-  const gradient = ctx.createLinearGradient(0, 0, 512, 512);
+  const gradient = ctx.createLinearGradient(0, 0, size, size);
   gradient.addColorStop(0, "#4c5f33");
   gradient.addColorStop(0.5, "#55693a");
   gradient.addColorStop(1, "#41522d");
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 512, 512);
+  ctx.fillRect(0, 0, size, size);
 
-  for (let i = 0; i < 9000; i += 1) {
-    const x = rand() * 512;
-    const y = rand() * 512;
+  const bladeCount = Math.round(9000 * (size / 512) ** 2);
+  for (let i = 0; i < bladeCount; i += 1) {
+    const x = rand() * size;
+    const y = rand() * size;
     const shade = rand();
     ctx.strokeStyle =
       shade > 0.72 ? "rgba(140,158,96,0.30)" : shade > 0.4 ? "rgba(48,66,34,0.35)" : "rgba(96,112,62,0.28)";
@@ -57,61 +58,97 @@ export function grassTexture(): THREE.CanvasTexture {
   return toTexture(ctx, true);
 }
 
-export function stoneTexture(): THREE.CanvasTexture {
-  const ctx = canvas2d(512, 512);
+export function stoneTexture(size = 512): THREE.CanvasTexture {
+  const ctx = canvas2d(size, size);
   const rand = seededRandom(21);
+  const unit = size / 512;
   ctx.fillStyle = "#6c6559";
-  ctx.fillRect(0, 0, 512, 512);
+  ctx.fillRect(0, 0, size, size);
   const rows = 8;
-  const rowHeight = 512 / rows;
+  const rowHeight = size / rows;
   for (let row = 0; row < rows; row += 1) {
-    const offset = row % 2 === 0 ? 0 : 48;
-    for (let x = -64; x < 560; x += 96) {
-      const px = x + offset + (rand() - 0.5) * 5;
-      const py = row * rowHeight + 2;
+    const offset = row % 2 === 0 ? 0 : 48 * unit;
+    for (let x = -64 * unit; x < size + 48 * unit; x += 96 * unit) {
+      const px = x + offset + (rand() - 0.5) * 5 * unit;
+      const py = row * rowHeight + 2 * unit;
       const tone = 118 + Math.floor(rand() * 34);
       ctx.fillStyle = `rgb(${tone}, ${tone - 8}, ${tone - 20})`;
-      ctx.fillRect(px + 2, py + 2, 92, rowHeight - 6);
+      ctx.fillRect(px + 2 * unit, py + 2 * unit, 92 * unit, rowHeight - 6 * unit);
       ctx.fillStyle = "rgba(255,255,255,0.06)";
-      ctx.fillRect(px + 2, py + 2, 92, 2);
+      ctx.fillRect(px + 2 * unit, py + 2 * unit, 92 * unit, 2 * unit);
     }
   }
-  for (let i = 0; i < 2400; i += 1) {
+  const speckles = Math.round(2400 * (size / 512) ** 2);
+  for (let i = 0; i < speckles; i += 1) {
     ctx.fillStyle = rand() > 0.5 ? "rgba(42,38,32,0.16)" : "rgba(196,188,168,0.10)";
-    ctx.fillRect(rand() * 512, rand() * 512, 2, 2);
+    ctx.fillRect(rand() * size, rand() * size, 2 * unit, 2 * unit);
   }
   return toTexture(ctx, true);
 }
 
-export function dirtTexture(): THREE.CanvasTexture {
-  const ctx = canvas2d(256, 256);
+/** Running-bond brick with mortar and per-brick tonal variation. */
+export function brickTexture(size = 512): THREE.CanvasTexture {
+  const ctx = canvas2d(size, size);
+  const rand = seededRandom(64);
+  const unit = size / 512;
+  ctx.fillStyle = "#b9ad96";
+  ctx.fillRect(0, 0, size, size);
+  const rows = 12;
+  const rowHeight = size / rows;
+  const brickWidth = 84 * unit;
+  for (let row = 0; row < rows; row += 1) {
+    const offset = row % 2 === 0 ? 0 : -brickWidth / 2;
+    for (let x = offset; x < size; x += brickWidth) {
+      const tone = 118 + Math.floor(rand() * 42);
+      ctx.fillStyle = `rgb(${tone}, ${Math.round(tone * 0.58)}, ${Math.round(tone * 0.44)})`;
+      ctx.fillRect(
+        x + 2 * unit,
+        row * rowHeight + 2 * unit,
+        brickWidth - 4 * unit,
+        rowHeight - 4 * unit,
+      );
+      ctx.fillStyle = "rgba(255,236,210,0.10)";
+      ctx.fillRect(x + 3 * unit, row * rowHeight + 3 * unit, brickWidth - 6 * unit, 2 * unit);
+      ctx.fillStyle = "rgba(48,30,22,0.12)";
+      ctx.fillRect(x + 3 * unit, (row + 1) * rowHeight - 4 * unit, brickWidth - 6 * unit, 2 * unit);
+    }
+  }
+  return toTexture(ctx, true);
+}
+
+export function dirtTexture(size = 512): THREE.CanvasTexture {
+  const ctx = canvas2d(size, size);
   const rand = seededRandom(33);
+  const unit = size / 512;
   ctx.fillStyle = "#8a6a48";
-  ctx.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 3200; i += 1) {
+  ctx.fillRect(0, 0, size, size);
+  const grains = Math.round(5200 * (size / 512) ** 2);
+  for (let i = 0; i < grains; i += 1) {
     const tone = rand();
     ctx.fillStyle =
       tone > 0.66 ? "rgba(160,126,88,0.4)" : tone > 0.33 ? "rgba(112,84,56,0.36)" : "rgba(70,52,34,0.24)";
-    const size = 1 + rand() * 2.5;
-    ctx.fillRect(rand() * 256, rand() * 256, size, size);
+    const grain = 1 + rand() * 2.5;
+    ctx.fillRect(rand() * size, rand() * size, grain * unit, grain * unit);
   }
   return toTexture(ctx, true);
 }
 
-export function plasterTexture(): THREE.CanvasTexture {
-  const ctx = canvas2d(256, 256);
+export function plasterTexture(size = 512): THREE.CanvasTexture {
+  const ctx = canvas2d(size, size);
   const rand = seededRandom(56);
+  const unit = size / 512;
   ctx.fillStyle = "#e2d8c4";
-  ctx.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 5000; i += 1) {
+  ctx.fillRect(0, 0, size, size);
+  const flecks = Math.round(8000 * (size / 512) ** 2);
+  for (let i = 0; i < flecks; i += 1) {
     ctx.fillStyle = rand() > 0.5 ? "rgba(255,255,255,0.10)" : "rgba(150,138,116,0.08)";
-    ctx.fillRect(rand() * 256, rand() * 256, 2, 2);
+    ctx.fillRect(rand() * size, rand() * size, 2 * unit, 2 * unit);
   }
   ctx.strokeStyle = "rgba(120,108,90,0.10)";
   for (let i = 0; i < 14; i += 1) {
     ctx.beginPath();
-    ctx.moveTo(rand() * 256, 0);
-    ctx.lineTo(rand() * 256, 256);
+    ctx.moveTo(rand() * size, 0);
+    ctx.lineTo(rand() * size, size);
     ctx.stroke();
   }
   return toTexture(ctx, true);

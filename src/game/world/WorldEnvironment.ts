@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { createCharacter, setRigUniform, type CharacterRig } from "./CharacterFactory";
 import { MeshBuilder, shortestAngle, type MaterialLibrary } from "./geometry";
 import {
+  brickTexture,
   chalkboardTexture,
   dirtTexture,
   grassTexture,
@@ -23,7 +24,14 @@ import { getHouseCaptain, getHousePrefect } from "../data/students";
 import { GARDEN_ITEMS, type GardenItemId } from "../data/night";
 import { INTERIOR_CONTENT } from "../data/interiors";
 import { PRINCIPAL, isInsidePrincipalChamber } from "../data/principal";
-import type { NoticeView } from "../core/types";
+import type {
+  EffectsQuality,
+  NoticeView,
+  Quality,
+  ShadowQuality,
+  TextureQuality,
+} from "../core/types";
+import { QUALITY_PROFILES } from "../core/graphics";
 
 export interface BlockCollider {
   minX: number;
@@ -225,6 +233,11 @@ export class WorldEnvironment {
   private materials: MaterialLibrary = {};
   private disposables: Array<{ dispose: () => void }> = [];
   private pointLights: THREE.PointLight[] = [];
+  private surfaceTextures: THREE.Texture[] = [];
+  private windTime = { value: 0 };
+  private textureQuality: TextureQuality;
+  private quality: Quality = "high";
+  private effectsQuality: EffectsQuality = "high";
   private flag: THREE.Mesh | null = null;
   private flagBase: Float32Array | null = null;
   private flagTime = 0;
@@ -251,7 +264,8 @@ export class WorldEnvironment {
   private feastVisual: THREE.Group | null = null;
   private roommateCelebrating = false;
 
-  constructor() {
+  constructor(textureQuality: TextureQuality = "high") {
+    this.textureQuality = textureQuality;
     this.group.name = "world";
     this.nightGroup.name = "night-life";
     this.nightGroup.visible = false;
@@ -274,8 +288,10 @@ export class WorldEnvironment {
     map.wrapS = THREE.RepeatWrapping;
     map.wrapT = THREE.RepeatWrapping;
     map.repeat.set(repeatX, repeatY);
+    map.anisotropy = this.textureAnisotropy();
     map.needsUpdate = true;
     this.disposables.push(map);
+    this.surfaceTextures.push(map);
     return map;
   }
 
@@ -290,12 +306,22 @@ export class WorldEnvironment {
     return material;
   }
 
+  private textureSize(): number {
+    return this.textureQuality === "low" ? 256 : this.textureQuality === "medium" ? 512 : 1024;
+  }
+
+  private textureAnisotropy(): number {
+    return this.textureQuality === "low" ? 1 : this.textureQuality === "medium" ? 4 : 8;
+  }
+
   private createMaterials(): void {
-    const grass = grassTexture();
-    const stone = stoneTexture();
-    const dirt = dirtTexture();
-    const plaster = plasterTexture();
-    this.disposables.push(grass, stone, dirt, plaster);
+    const size = this.textureSize();
+    const grass = grassTexture(size);
+    const stone = stoneTexture(size);
+    const dirt = dirtTexture(size);
+    const plaster = plasterTexture(size);
+    const brick = brickTexture(size);
+    this.disposables.push(grass, stone, dirt, plaster, brick);
 
     const grassMap = this.textured(grass, 48, 48);
     const pathMap = this.textured(stone, 2, 6);
@@ -303,17 +329,39 @@ export class WorldEnvironment {
     const dirtMap = this.textured(dirt, 5, 4);
     const plasterMap = this.textured(plaster, 3, 2);
     const plasterMap2 = this.textured(plaster, 2, 3);
+    const brickMap = this.textured(brick, 2, 1);
 
     const mats: MaterialLibrary = {
-      grass: this.standard("#ffffff", 1, 0, { map: grassMap }),
-      stonePath: this.standard("#c8c2b4", 0.92, 0, { map: pathMap }),
-      stonePlaza: this.standard("#cfc8b8", 0.9, 0, { map: plazaMap }),
-      dirt: this.standard("#b7a189", 1, 0, { map: dirtMap }),
+      grass: this.standard("#ffffff", 1, 0, { map: grassMap, bumpMap: grassMap, bumpScale: 0.018 }),
+      stonePath: this.standard("#c8c2b4", 0.92, 0, {
+        map: pathMap,
+        bumpMap: pathMap,
+        bumpScale: 0.035,
+      }),
+      stonePlaza: this.standard("#cfc8b8", 0.9, 0, {
+        map: plazaMap,
+        bumpMap: plazaMap,
+        bumpScale: 0.028,
+      }),
+      dirt: this.standard("#b7a189", 1, 0, { map: dirtMap, bumpMap: dirtMap, bumpScale: 0.02 }),
       track: this.standard("#9a6248", 0.96),
-      plaster: this.standard("#efe6d2", 0.94, 0, { map: plasterMap }),
+      plaster: this.standard("#efe6d2", 0.94, 0, {
+        map: plasterMap,
+        bumpMap: plasterMap,
+        bumpScale: 0.012,
+      }),
       plasterWarm: this.standard("#e3cfae", 0.94, 0, { map: plasterMap2 }),
       plasterCool: this.standard("#d7d2c4", 0.94, 0, { map: plasterMap }),
-      plinth: this.standard("#7d7464", 0.95),
+      brick: this.standard("#c9a58b", 0.95, 0, {
+        map: brickMap,
+        bumpMap: brickMap,
+        bumpScale: 0.04,
+      }),
+      plinth: this.standard("#a9957c", 0.95, 0, {
+        map: brickMap,
+        bumpMap: brickMap,
+        bumpScale: 0.035,
+      }),
       roof: this.standard("#8a8071", 0.92),
       roofDark: this.standard("#645d52", 0.9),
       terracotta: this.standard("#8d4f3c", 0.9),
@@ -417,7 +465,33 @@ export class WorldEnvironment {
     }
     mats.flag = this.houseFlagMaterials[DEFAULT_HOUSE_ID];
 
+    for (const key of ["foliageA", "foliageB", "foliageC", "hedge", "bamboo"]) {
+      const material = mats[key];
+      if (material) this.addWindSway(material);
+    }
+
     this.materials = mats;
+  }
+
+  /**
+   * Vertex-level canopy movement keeps every tree in the existing merged
+   * batches, so there is no per-tree draw call or animation object to update.
+   */
+  private addWindSway(material: THREE.Material): void {
+    const standard = material as THREE.MeshStandardMaterial;
+    standard.onBeforeCompile = (shader) => {
+      shader.uniforms.uWindTime = this.windTime;
+      shader.vertexShader = `uniform float uWindTime;\n${shader.vertexShader}`.replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        float windHeight = smoothstep(0.7, 4.2, transformed.y);
+        float windGust = sin(uWindTime * 1.05 + transformed.x * 0.12 + transformed.z * 0.08);
+        float windRipple = cos(uWindTime * 1.6 + transformed.z * 0.17);
+        transformed.x += (windGust * 0.05 + windRipple * 0.016) * windHeight;
+        transformed.z += (windRipple * 0.034 - windGust * 0.012) * windHeight;`,
+      );
+    };
+    standard.customProgramCacheKey = () => "navodaya-canopy-wind-v1";
   }
 
   // -------------------------------------------------------------------- sky
@@ -428,6 +502,8 @@ export class WorldEnvironment {
       midColor: { value: new THREE.Color("#a8a184") },
       bottomColor: { value: new THREE.Color("#f0cc9a") },
       sunDirection: { value: new THREE.Vector3(-0.55, 0.32, 0.55).normalize() },
+      cloudStrength: { value: 1 },
+      time: { value: 0 },
     };
     const skyMaterial = new THREE.ShaderMaterial({
         uniforms,
@@ -444,13 +520,53 @@ export class WorldEnvironment {
           uniform vec3 midColor;
           uniform vec3 bottomColor;
           uniform vec3 sunDirection;
+          uniform float cloudStrength;
+          uniform float time;
           varying vec3 vWorldPosition;
+
+          float skyHash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+          }
+          float skyNoise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(
+              mix(skyHash(i), skyHash(i + vec2(1.0, 0.0)), f.x),
+              mix(skyHash(i + vec2(0.0, 1.0)), skyHash(i + vec2(1.0, 1.0)), f.x),
+              f.y
+            );
+          }
+          float skyFbm(vec2 p) {
+            float value = 0.0;
+            float amplitude = 0.5;
+            for (int i = 0; i < 4; i++) {
+              value += skyNoise(p) * amplitude;
+              p = p * 2.03 + vec2(11.7, 5.3);
+              amplitude *= 0.5;
+            }
+            return value;
+          }
+
           void main() {
             vec3 direction = normalize(vWorldPosition);
             float height = clamp(direction.y, -0.1, 1.0);
             vec3 color = mix(bottomColor, midColor, smoothstep(0.0, 0.22, height));
             color = mix(color, topColor, smoothstep(0.18, 0.75, height));
             float sunAmount = max(dot(direction, sunDirection), 0.0);
+
+            // Layered cloud deck: broad dark bases with bright sun-facing edges.
+            if (height > 0.015) {
+              vec2 cloudUv = direction.xz / (height + 0.14) * 0.62;
+              cloudUv += vec2(time * 0.0045, time * 0.0017);
+              float clouds = skyFbm(cloudUv * 1.55 + vec2(3.2, 7.8));
+              float wisps = skyFbm(cloudUv * 3.2 - vec2(1.4, 0.8));
+              clouds = smoothstep(0.52, 0.76, clouds * 0.82 + wisps * 0.26);
+              clouds *= smoothstep(0.01, 0.24, height) * cloudStrength;
+              vec3 cloudColor = mix(vec3(0.52, 0.56, 0.58), vec3(1.0, 0.93, 0.82), pow(sunAmount, 2.0));
+              color = mix(color, cloudColor, clouds * 0.82);
+            }
+
             color += vec3(1.0, 0.72, 0.42) * pow(sunAmount, 22.0) * 0.85;
             color += vec3(1.0, 0.78, 0.52) * pow(sunAmount, 4.0) * 0.12;
             gl_FragColor = vec4(color, 1.0);
@@ -974,7 +1090,7 @@ export class WorldEnvironment {
 
     // Pillars and arch.
     [ -6.9, 6.9 ].forEach((x) => {
-      this.builder.box("plaster", { w: 1.5, h: 6.4, d: 1.5 }, x, 3.2, 50, {});
+      this.builder.box("brick", { w: 1.5, h: 6.4, d: 1.5 }, x, 3.2, 50, {});
       this.builder.box("stonePath", { w: 1.9, h: 0.45, d: 1.9 }, x, 0.22, 50, {});
       this.builder.box("brass", { w: 1.1, h: 0.24, d: 1.1 }, x, 6.5, 50, {});
       this.collider(x - 0.85, x + 0.85, 49.15, 50.85, "gate-pillar");
@@ -1780,6 +1896,7 @@ export class WorldEnvironment {
       const friend = createCharacter({
         uniform: "#7d7f7a",
         skin,
+        detail: "low",
         hairStyle: index === 0 ? "short" : "side",
         hairColor: friendHair[index],
       });
@@ -1841,7 +1958,9 @@ export class WorldEnvironment {
     color: string,
     senior: boolean,
   ): void {
-    const rig = createCharacter({ uniform: color, skin: "#a8734c", senior });
+    // Background house students use the lightweight rig; the player keeps the
+    // high-detail character and each identity/colour stays intact.
+    const rig = createCharacter({ uniform: color, skin: "#a8734c", senior, detail: "low" });
     rig.group.position.set(x, 0, z);
     rig.group.rotation.y = rotationY;
     this.group.add(rig.group);
@@ -2165,7 +2284,7 @@ export class WorldEnvironment {
   }
 
   private addPatrol(route: THREE.Vector3[], speed: number): void {
-    const rig = createCharacter({ uniform: "#2b3038", skin: "#9c6b4a" });
+    const rig = createCharacter({ uniform: "#2b3038", skin: "#9c6b4a", detail: "low" });
     rig.group.position.copy(route[0]);
     rig.group.name = "night-patrol";
     this.nightGroup.add(rig.group);
@@ -3583,17 +3702,56 @@ export class WorldEnvironment {
 
   // ------------------------------------------------------------------ update
 
-  setQuality(quality: "low" | "medium" | "high"): void {
-    const size = quality === "high" ? 2048 : quality === "medium" ? 1024 : 512;
-    if (this.sun.shadow.mapSize.x !== size) {
+  setGraphics(
+    quality: Quality,
+    shadowQuality: ShadowQuality = "high",
+    textureQuality: TextureQuality = QUALITY_PROFILES[quality].texture,
+  ): void {
+    this.quality = quality;
+    const profile = QUALITY_PROFILES[quality];
+    const size =
+      shadowQuality === "off"
+        ? 0
+        : shadowQuality === "low"
+          ? 512
+          : shadowQuality === "medium"
+            ? 1024
+            : quality === "ultra"
+              ? 4096
+              : 2048;
+    if (this.sun.shadow.mapSize.x !== size && size > 0) {
       this.sun.shadow.mapSize.set(size, size);
       if (this.sun.shadow.map) {
         this.sun.shadow.map.dispose();
         this.sun.shadow.map = null;
       }
     }
-    this.sun.castShadow = quality !== "low";
-    for (const light of this.pointLights) light.visible = quality !== "low";
+    this.sun.castShadow = size > 0;
+    const distance = profile.shadowDistance;
+    this.sun.shadow.camera.left = -distance;
+    this.sun.shadow.camera.right = distance;
+    this.sun.shadow.camera.top = distance;
+    this.sun.shadow.camera.bottom = -distance;
+    this.sun.shadow.camera.updateProjectionMatrix();
+    for (const light of this.pointLights) light.visible = profile.pointLights;
+    this.setTextureQuality(textureQuality);
+  }
+
+  setTextureQuality(quality: TextureQuality): void {
+    this.textureQuality = quality;
+    const anisotropy = this.textureAnisotropy();
+    for (const texture of this.surfaceTextures) {
+      if (texture.anisotropy !== anisotropy) {
+        texture.anisotropy = anisotropy;
+        texture.needsUpdate = true;
+      }
+    }
+  }
+
+  setEffectsQuality(quality: EffectsQuality): void {
+    this.effectsQuality = quality;
+    this.sun.shadow.radius = quality === "high" ? 3.2 : quality === "medium" ? 2.2 : 1.2;
+    if (this.sunGlow) this.sunGlow.visible = !this.night && quality !== "low";
   }
 
   setCharacter(uniform: string, skin: string): void {
@@ -3623,6 +3781,7 @@ export class WorldEnvironment {
       (uniforms.sunDirection.value as THREE.Vector3)
         .set(night ? 0.35 : -0.55, night ? 0.55 : 0.32, night ? -0.75 : 0.55)
         .normalize();
+      uniforms.cloudStrength.value = night ? 0.16 : 1;
     }
 
     if (this.sun) {
@@ -3869,6 +4028,19 @@ export class WorldEnvironment {
   }
 
   update(dt: number, elapsed: number, playerPosition: THREE.Vector3, crouching = false, noise = 0): void {
+    this.windTime.value = elapsed;
+    if (this.skyMaterial) this.skyMaterial.uniforms.time.value = elapsed;
+    if (this.sun.castShadow) {
+      // Keep the shadow footprint around the player instead of spreading a
+      // coarse map over the entire campus. The light direction is unchanged.
+      this.sun.position.set(
+        playerPosition.x + (this.night ? 38 : -48),
+        this.night ? 56 : 42,
+        playerPosition.z + (this.night ? -28 : 46),
+      );
+      this.sun.target.position.set(playerPosition.x, 0, playerPosition.z);
+      this.sun.target.updateMatrixWorld();
+    }
     for (const door of this.doors) door.update(dt);
 
     if (this.flag && this.flagBase) {
@@ -3927,7 +4099,19 @@ export class WorldEnvironment {
       }
     }
 
+    // Distant decorative students are the main per-frame draw-call cost on a
+    // weak phone. Low/Medium use a shorter visibility radius; their identities
+    // and tags return as soon as the player walks closer.
+    const houseNpcRange = this.quality === "low" ? 25 : this.quality === "medium" ? 34 : 56;
     this.houseNpcs.forEach((npc, index) => {
+      const distance = Math.hypot(
+        playerPosition.x - npc.rig.group.position.x,
+        playerPosition.z - npc.rig.group.position.z,
+      );
+      const visible = npc.id !== this.playerCharacterId && distance < houseNpcRange;
+      npc.rig.group.visible = visible;
+      npc.tag.visible = visible;
+      if (!visible) return;
       npc.rig.group.position.y = npc.baseY + Math.sin(elapsed * 1.3 + index * 1.7) * 0.008;
       npc.rig.torso.rotation.z = Math.sin(elapsed * 0.7 + index) * 0.01;
       npc.rig.group.rotation.y = npc.baseRotation;

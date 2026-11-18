@@ -10,7 +10,11 @@ import type { EscapeSave } from "../data/escape";
 import type { ClassBunkSave } from "../data/classBunk";
 import type { MessMealSave } from "../data/messMeal";
 
-export type Quality = "low" | "medium" | "high";
+export type Quality = "low" | "medium" | "high" | "ultra";
+export type QualityPreference = Quality | "auto";
+export type ShadowQuality = "off" | "low" | "medium" | "high";
+export type TextureQuality = "low" | "medium" | "high";
+export type EffectsQuality = "low" | "medium" | "high";
 
 export type Screen =
   | "menu"
@@ -25,7 +29,13 @@ export type Screen =
   | "escape";
 
 export interface GameSettings {
-  quality: Quality;
+  quality: QualityPreference;
+  shadowQuality: ShadowQuality;
+  renderScale: number;
+  viewDistance: number;
+  textureQuality: TextureQuality;
+  antialias: boolean;
+  effectsQuality: EffectsQuality;
   sensitivity: number;
   invertY: boolean;
   volume: number;
@@ -458,7 +468,13 @@ export const MISSION_STEPS: MissionStep[] = [
 ];
 
 export const DEFAULT_SETTINGS: GameSettings = {
-  quality: "high",
+  quality: "auto",
+  shadowQuality: "high",
+  renderScale: 1,
+  viewDistance: 1,
+  textureQuality: "high",
+  antialias: true,
+  effectsQuality: "high",
   sensitivity: 1,
   invertY: false,
   volume: 0.65,
