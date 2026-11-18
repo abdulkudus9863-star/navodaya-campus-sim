@@ -1,0 +1,1 @@
+import{j as r}from"./framer-motion-CMh_u_qu.js";import{G as t}from"./GameShell-DlZJq1vZ.js";import"./SaveSystem-C6sJH0pv.js";import"./index-DT6_uYsD.js";import"./radix-ui-XBf6vCn3.js";import"./react-vendor-k1zyX6uG.js";import"./arrow-left-fuIJRFOH.js";import"./arrow-right-BpYDn4Bj.js";function l(){return r.jsx(t,{})}export{l as default};
