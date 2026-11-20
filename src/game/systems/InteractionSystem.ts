@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { npcProfileForInteractable, npcPromptLabel } from "../npcs/NpcRegistry";
 import type { WorldEnvironment, WorldInteractable } from "../world/WorldEnvironment";
 
 export class InteractionSystem {
@@ -45,6 +46,8 @@ export class InteractionSystem {
   }
 
   promptFor(interactable: WorldInteractable): string {
+    const npc = npcProfileForInteractable(interactable);
+    if (npc) return npcPromptLabel(npc);
     switch (interactable.kind) {
       case "npc":
       case "principal":

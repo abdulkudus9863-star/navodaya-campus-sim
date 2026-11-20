@@ -1675,6 +1675,45 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
 
 /* ---------------------------------------------------------------- dialogue */
 
+/** Lightweight typewriter that respects reduced-motion and never delays input. */
+function TypedDialogueText({ text }: { text: string }) {
+  const [visible, setVisible] = useState(0);
+
+  useEffect(() => {
+    setVisible(0);
+    if (typeof window === "undefined") {
+      setVisible(text.length);
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setVisible(text.length);
+      return;
+    }
+    let next = 0;
+    const timer = window.setInterval(() => {
+      next = Math.min(text.length, next + 2);
+      setVisible(next);
+      if (next >= text.length) window.clearInterval(timer);
+    }, 18);
+    return () => window.clearInterval(timer);
+  }, [text]);
+
+  const complete = visible >= text.length;
+  return (
+    <p
+      aria-label={text}
+      className="min-h-[3.5rem] font-display text-lg leading-relaxed text-[#efe4cd] sm:text-xl"
+    >
+      {text.slice(0, visible)}
+      {!complete && (
+        <span aria-hidden="true" className="ml-0.5 inline-block animate-pulse text-primary/70">
+          ▍
+        </span>
+      )}
+    </p>
+  );
+}
+
 function DialogueOverlay({ state, engine }: { state: GameUIState; engine: GameEngine | null }) {
   const dialogue = state.dialogue;
   if (!dialogue) return null;
@@ -1696,7 +1735,7 @@ function DialogueOverlay({ state, engine }: { state: GameUIState; engine: GameEn
             <TeacherPortrait teacher={teacher} size={62} />
           ) : (
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-primary/50 bg-[#1a1610] font-display text-lg text-primary">
-              M
+              {dialogue.speaker.trim().charAt(0).toUpperCase() || "N"}
             </span>
           )}
           <div className="min-w-0 flex-1 pt-0.5">
@@ -1742,9 +1781,7 @@ function DialogueOverlay({ state, engine }: { state: GameUIState; engine: GameEn
               <span>{teacher.notice}</span>
             </div>
           )}
-          <p className="font-display text-lg leading-relaxed text-[#efe4cd] sm:text-xl">
-            {dialogue.text}
-          </p>
+          <TypedDialogueText key={`${dialogue.speaker}:${dialogue.text}`} text={dialogue.text} />
 
           {dialogue.choices.length > 0 && (
             <div className="mt-4 space-y-1.5">

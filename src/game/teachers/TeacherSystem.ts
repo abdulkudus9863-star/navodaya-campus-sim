@@ -11,6 +11,12 @@ import { TeacherPatrolManager, type TeacherConfigPatch } from "./TeacherPatrolMa
 import { TeacherPersonalityManager } from "./TeacherPersonalityManager";
 import { SchoolTimetableManager, type SchoolTime } from "./SchoolTimetableManager";
 import { StudentIdentityManager, type StudentIdentity } from "./StudentIdentityManager";
+import {
+  allNpcProfiles,
+  npcProfileAt,
+  npcProfileForTeacher,
+  npcScheduleFor,
+} from "../npcs/NpcRegistry";
 
 export interface TeacherSystemContext {
   profile: PlayerProfileSave | null;
@@ -195,6 +201,11 @@ export class TeacherSystem {
 
     const positions = [...this.controllers.values()].map((controller) => controller.position);
     for (const controller of this.controllers.values()) {
+      // Hidden challenge subsets must not expose an invisible interaction.
+      if (!controller.rig.group.visible) {
+        controller.interactable.active = false;
+        continue;
+      }
       const isTalking = this.active === controller.id;
       if (isTalking) {
         controller.updateTalkOnly(dt, elapsed, context.player.x, context.player.z);
@@ -221,6 +232,7 @@ export class TeacherSystem {
         context.player.z,
       );
       const others = positions.filter((position) => position !== controller.position);
+      const routine = npcScheduleFor(npcProfileForTeacher(controller.id), time.phase);
       controller.update(stepDt, elapsed, {
         playerX: context.player.x,
         playerZ: context.player.z,
@@ -232,6 +244,8 @@ export class TeacherSystem {
         otherTeachers: others,
         talking: false,
         mood: controller.config.personality === "strict" ? "stern" : "calm",
+        routineActivity: routine.activity,
+        routineArea: routine.area,
       });
 
       const loops = controller.routeLoopCount;
@@ -388,6 +402,20 @@ export class TeacherSystem {
         TEACHER_IDS.map((id) => [id, this.memory.cooldownRemaining(id)]),
       ),
       discipline: this.disciplineView(),
+      npcProfiles: allNpcProfiles().map((profile) => {
+        const at = npcProfileAt(profile, this.lastTime.phase);
+        return {
+          npcId: at.npcId,
+          name: at.name,
+          role: at.role,
+          subject: at.subject,
+          personality: at.personality,
+          patrolArea: at.patrolArea,
+          currentActivity: at.currentActivity,
+          activeStatus: at.activeStatus,
+          missionReferences: at.missionReferences,
+        };
+      }),
       teachers: this.allTeachers().map((teacher) => teacher.snapshot()),
       dialogue: this.active ? this.dialogue.currentView() : null,
     };
@@ -421,6 +449,8 @@ export class TeacherSystem {
           otherTeachers: others,
           talking: false,
           mood: controller.config.personality === "strict" ? "stern" : "calm",
+          routineActivity: "patrolling",
+          routineArea: controller.patrolArea,
         });
         if (collidesAt(controller.position.x, controller.position.z, this.world.colliders)) {
           collisions += 1;

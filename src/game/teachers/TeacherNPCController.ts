@@ -4,6 +4,7 @@ import type { BlockCollider, WorldInteractable } from "../world/WorldEnvironment
 import { damp, shortestAngle } from "../world/geometry";
 import { TeacherNavigationController } from "./TeacherNavigationController";
 import { TeacherDetectionSystem, type DetectionResult } from "./TeacherDetectionSystem";
+import type { NpcActivityId } from "../npcs/NpcRegistry";
 import { createTeacherRig, type TeacherRig } from "./TeacherFactory";
 
 export type TeacherActivity = "patrolling" | "idle" | "noticed" | "approaching" | "talking" | "cooldown";
@@ -19,6 +20,8 @@ export interface TeacherUpdateContext {
   otherTeachers: THREE.Vector3[];
   talking: boolean;
   mood: "stern" | "calm" | "encouraging" | "amused";
+  routineActivity: NpcActivityId;
+  routineArea: string;
 }
 
 export interface TeacherSnapshot {
@@ -28,6 +31,8 @@ export interface TeacherSnapshot {
   personality: string;
   gender: string;
   activity: TeacherActivity;
+  routineActivity: NpcActivityId;
+  routineArea: string;
   x: number;
   z: number;
   rotation: number;
@@ -64,6 +69,8 @@ export class TeacherNPCController {
   private available = false;
   private facingPlayer = false;
   private mood: TeacherUpdateContext["mood"] = "calm";
+  private routineActivity: NpcActivityId = "patrolling";
+  private routineArea = "campus";
   /** Mission difficulty scales real movement without changing base configs. */
   speedScale = 1;
 
@@ -137,6 +144,8 @@ export class TeacherNPCController {
 
   update(dt: number, elapsed: number, context: TeacherUpdateContext): void {
     this.mood = context.mood;
+    this.routineActivity = context.routineActivity;
+    this.routineArea = context.routineArea;
     const moveSpeed = this.config.speed * this.speedScale;
     const distance = Math.hypot(context.playerX - this.position.x, context.playerZ - this.position.z);
     const previousLoops = this.navigation.completedLoops;
@@ -190,8 +199,15 @@ export class TeacherNPCController {
       }
     } else {
       this.approachTimer = 0;
-      this.available = false;
-      this.interactable.active = false;
+      // Proximity conversation is available before a teacher fully locks on,
+      // so the player can walk up from any direction. Detection still controls
+      // the notice ring, warnings and patrol behaviour.
+      this.available =
+        context.cooldownReady &&
+        !context.playerBusy &&
+        context.lineOfSight &&
+        distance <= this.interactable.radius;
+      this.interactable.active = this.available;
       if (this.activityValue === "cooldown") {
         const avoidPlayer = new THREE.Vector3(context.playerX, 0, context.playerZ);
         this.navigation.update(dt, moveSpeed * 0.86, context.colliders, {
@@ -268,6 +284,8 @@ export class TeacherNPCController {
       personality: this.config.personality,
       gender: this.config.gender,
       activity: this.activityValue,
+      routineActivity: this.routineActivity,
+      routineArea: this.routineArea,
       x: Number(this.position.x.toFixed(2)),
       z: Number(this.position.z.toFixed(2)),
       rotation: Number(this.navigation.rotation.toFixed(3)),

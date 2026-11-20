@@ -285,6 +285,9 @@ export class TeacherDialogueManager {
     } else if (context.violation) {
       this.addDisciplineQuestion(context);
       this.currentId = "discipline";
+    } else if (context.config.id === "dinesh" && context.area === "hostel") {
+      this.addHostelCheck(context);
+      this.currentId = "hostel-check";
     } else if (this.shouldAskSubject(context, memory.encounters)) {
       this.addSubjectQuestion(context);
       this.currentId = "subject";
@@ -755,6 +758,50 @@ export class TeacherDialogueManager {
         context.config.id === "dinesh"
           ? "The timetable is not here to entertain you. It is here so four hundred students can live together. Report to the Principal's Chamber immediately."
           : "You may find the timetable dull; that does not give you permission to ignore it. Go back to your proper place and we will speak again.",
+    });
+  }
+
+  /** Dinesh's authored hostel encounter, with the player's actual name. */
+  private addHostelCheck(context: TeacherDialogueContext): void {
+    const name = context.identity.firstName;
+    this.add({
+      id: "hostel-check",
+      question: "Why are you roaming around the hostel?",
+      text: `${name}! Stop there. Why are you roaming around the hostel? Where are you supposed to be?`,
+      choices: [
+        {
+          label: "Sir, I was going to my room.",
+          next: "hostel-check-room",
+          tone: "respectful",
+          correct: true,
+        },
+        {
+          label: "Sorry, sir. I will go now.",
+          next: "hostel-check-sorry",
+          tone: "respectful",
+          correct: true,
+        },
+        {
+          label: "I was looking for my friend.",
+          next: "hostel-check-friend",
+          tone: "honest",
+        },
+      ],
+    });
+    this.add({
+      id: "hostel-check-room",
+      question: "Why are you roaming around the hostel?",
+      text: "Then get to your room. Do not turn the hostel corridor into a meeting place.",
+    });
+    this.add({
+      id: "hostel-check-sorry",
+      question: "Why are you roaming around the hostel?",
+      text: "See that you do. I will be walking this path again.",
+    });
+    this.add({
+      id: "hostel-check-friend",
+      question: "Why are you roaming around the hostel?",
+      text: "Find him at his room, not by drifting through the block. Then get back to where you belong.",
     });
   }
 
