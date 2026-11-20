@@ -145,6 +145,7 @@ export class MessRunEngine {
   private readonly trayGeo = new THREE.BoxGeometry(1, 1, 1);
   private readonly openCylinder = new THREE.CylinderGeometry(0.5, 0.46, 1, 14, 1, true);
   private readonly materials: Record<string, THREE.MeshStandardMaterial>;
+  private readonly particleMaterials: THREE.MeshStandardMaterial[];
 
   private animationFrame = 0;
   private hudTimer = 0;
@@ -218,11 +219,19 @@ export class MessRunEngine {
       dust: material("#9e8055", 0.98, 0, { transparent: true, opacity: 0.5 }),
     };
 
+    const particlePalette = ["#d7b46a", "#eadfc4", "#c98e3a", "#59753d", "#c8945f"];
+    this.particleMaterials = Array.from({ length: 46 }, (_, index) =>
+      material(particlePalette[index % particlePalette.length], 0.8, 0, { transparent: true }),
+    );
+
     this.scene.background = new THREE.Color("#0e1a13");
     this.scene.fog = new THREE.Fog("#0e1a13", 28, 108);
     this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 180);
-    this.camera.position.set(2.15, 3.85, 7.6);
-    this.camera.lookAt(0, 1.2, -7);
+    // Sit behind the chasing teacher, not between the teacher and the runner.
+    // At the normal 5.4 m gap this keeps the teacher's head around 70% of
+    // screen height and the player's trays near the centre of the frame.
+    this.camera.position.set(2.15, 4.6, 11.4);
+    this.camera.lookAt(0, 1.2, -7.5);
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: !window.matchMedia("(pointer: coarse)").matches,
@@ -909,8 +918,8 @@ export class MessRunEngine {
     const shakeX = (Math.random() - 0.5) * this.shake * 0.18;
     const shakeY = (Math.random() - 0.5) * this.shake * 0.1;
     this.camera.position.x = damp(this.camera.position.x, 2.15 + sim.playerX * 0.24, 5, dt) + shakeX;
-    this.camera.position.y = damp(this.camera.position.y, 3.78 + sim.playerY * 0.11, 6, dt) + shakeY;
-    this.camera.position.z = damp(this.camera.position.z, 7.6, 8, dt);
+    this.camera.position.y = damp(this.camera.position.y, 4.6 + sim.playerY * 0.11, 6, dt) + shakeY;
+    this.camera.position.z = damp(this.camera.position.z, sim.teacherGap + 6, 4, dt);
     this.camera.lookAt(sim.playerX * 0.3, 1.18 + sim.playerY * 0.2, -7.5);
     this.camera.fov = window.innerWidth < 700 ? 64 : 58;
     this.camera.updateProjectionMatrix();
@@ -940,8 +949,10 @@ export class MessRunEngine {
       const alpha = Math.max(0, particle.life / particle.maxLife);
       particle.mesh.scale.setScalar(0.018 + alpha * 0.026);
       const mat = particle.mesh.material as THREE.MeshStandardMaterial;
-      mat.opacity = alpha;
-      mat.transparent = true;
+      if (mat !== this.materials.dust) {
+        mat.opacity = alpha;
+        mat.transparent = true;
+      }
     }
   }
 
@@ -949,17 +960,15 @@ export class MessRunEngine {
     const tray = side === "left" ? this.tray.left.group : this.tray.right.group;
     const position = new THREE.Vector3();
     tray.getWorldPosition(position);
-    const colors = ["#d7b46a", "#eadfc4", "#c98e3a", "#59753d", "#c8945f"];
     let spawned = 0;
-    for (const particle of this.particles) {
+    for (let index = 0; index < this.particles.length; index += 1) {
+      const particle = this.particles[index];
       if (particle.life > 0) continue;
       particle.mesh.visible = true;
       particle.mesh.position.copy(position);
-      particle.mesh.material = new THREE.MeshStandardMaterial({
-        color: colors[spawned % colors.length],
-        roughness: 0.8,
-        transparent: true,
-      });
+      particle.mesh.material = this.particleMaterials[index % this.particleMaterials.length];
+      const mat = particle.mesh.material as THREE.MeshStandardMaterial;
+      mat.opacity = 1;
       particle.velocity.set((Math.random() - 0.5) * 2.6, 1.4 + Math.random() * 2.5, (Math.random() - 0.5) * 2.4);
       particle.spin.set(Math.random() * 9, Math.random() * 9, Math.random() * 9);
       particle.life = 0.6 + Math.random() * 0.6;
@@ -979,6 +988,7 @@ export class MessRunEngine {
       0.15 + Math.random() * 0.3,
     );
     particle.mesh.material = this.materials.dust;
+    this.materials.dust.opacity = 0.5;
     particle.velocity.set((Math.random() - 0.5) * 0.4, 0.4 + Math.random() * 0.3, 0.25);
     particle.spin.set(0, Math.random(), 0);
     particle.life = 0.45;

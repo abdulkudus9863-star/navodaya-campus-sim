@@ -31,16 +31,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeft,
-  ArrowRight,
   Check,
   ChevronLeft,
-  Clock3,
   Coins,
   Footprints,
   Gauge,
   HeartPulse,
   Loader2,
-  MapPin,
   Music2,
   Pause,
   Play,
@@ -302,6 +299,28 @@ function RunHud({
             <FoodMeter label="Left tray" value={hud.leftTray} tone="left" />
             <FoodMeter label="Right tray" value={hud.rightTray} tone="right" />
           </div>
+          <div className="mt-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-ui text-[8px] uppercase tracking-[0.18em] text-[#e9ddc8]/42">
+                Plate stability
+              </span>
+              <span className="font-ui text-[9px] tabular-nums text-[#e9ddc8]/70">
+                {hud.plateStability}%
+              </span>
+            </div>
+            <div className="mt-1 h-1 overflow-hidden rounded-full bg-black/55">
+              <div
+                className={`h-full rounded-full transition-[width] duration-150 ${
+                  hud.plateStability > 55
+                    ? "bg-[#a9c7b0]"
+                    : hud.plateStability > 28
+                      ? "bg-[#d7b46a]"
+                      : "bg-[#c2705a]"
+                }`}
+                style={{ width: `${hud.plateStability}%` }}
+              />
+            </div>
+          </div>
           <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[#f1ead8]/8 pt-2 font-ui text-[9px] text-[#e9ddc8]/53">
             <span className="inline-flex items-center gap-1">
               <Coins className="size-3 text-[#e7c47d]" /> {hud.coins} tokens
@@ -484,6 +503,8 @@ function ResultsOverlay({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#f1ead8]/10 px-5 py-3 sm:px-7">
           <p className="font-ui text-[9px] uppercase tracking-[0.14em] text-[#e9ddc8]/40">
             Personal best · <span className="text-[#d7b46a]">{formatMessRunScore(bestScore)}</span>
+            <span className="mx-2 text-[#e9ddc8]/20">/</span>
+            {result.obstaclesAvoided} obstacles avoided
           </p>
           <p className="inline-flex items-center gap-1.5 font-ui text-[8px] uppercase tracking-[0.14em] text-[#e9ddc8]/35">
             {submitting ? (

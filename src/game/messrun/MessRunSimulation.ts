@@ -58,6 +58,7 @@ export interface MessRunSnapshot {
   obstaclesAvoided: number;
   speed: number;
   teacherGap: number;
+  plateStability: number;
   shieldSeconds: number;
   lane: number;
   targetDistance: number | null;
@@ -117,6 +118,7 @@ export class MessRunSimulation {
   nearMisses = 0;
   obstaclesAvoided = 0;
   teacherGap = START_GAP;
+  plateStability = 100;
   shieldSeconds = 0;
   result: MessRunResult | null = null;
 
@@ -197,6 +199,7 @@ export class MessRunSimulation {
     this.hitCooldown = Math.max(0, this.hitCooldown - step);
     this.recoveryDelay = Math.max(0, this.recoveryDelay - step);
     this.shieldSeconds = Math.max(0, this.shieldSeconds - step);
+    this.plateStability = Math.min(100, this.plateStability + step * 1.15);
     this.slideTimer = Math.max(0, this.slideTimer - step);
     this.playerX += (LANE_POSITIONS[this.lane] - this.playerX) * Math.min(1, step * 13);
 
@@ -211,7 +214,9 @@ export class MessRunSimulation {
         this.velocityY = 0;
         this.grounded = true;
         this.events.push({ type: "land", impact });
-        if (impact > 0.66) {
+        // A normal jump lands at roughly 0.8 impact. Only a forced dive or a
+        // genuinely heavy landing should spill food.
+        if (impact > 0.9) {
           const loss = 2.2 + impact * 2.4;
           this.leftTray = Math.max(0, this.leftTray - loss * 0.7);
           this.rightTray = Math.max(0, this.rightTray - loss);
@@ -284,6 +289,7 @@ export class MessRunSimulation {
       obstaclesAvoided: this.obstaclesAvoided,
       speed: this.speed,
       teacherGap: this.teacherGap,
+      plateStability: Math.round(this.plateStability),
       shieldSeconds: Math.ceil(this.shieldSeconds),
       lane: this.lane,
       targetDistance: this.mode.targetDistance,
@@ -337,6 +343,7 @@ export class MessRunSimulation {
     if (quickReverse) {
       this.leftTray = Math.max(0, this.leftTray - 0.6);
       this.rightTray = Math.max(0, this.rightTray - 0.9);
+      this.plateStability = Math.max(0, this.plateStability - 4);
       this.events.push({ type: "sharp-turn" });
     }
   }
@@ -355,6 +362,7 @@ export class MessRunSimulation {
       this.obstaclesAvoided += 1;
       this.nearMisses += 1;
       this.teacherGap = Math.min(7.2, this.teacherGap + 0.09);
+      this.plateStability = Math.min(100, this.plateStability + 3);
       this.events.push({ type: "near-miss" });
       return;
     }
@@ -367,6 +375,7 @@ export class MessRunSimulation {
 
     if (this.shieldSeconds > 0) {
       this.shieldSeconds = 0;
+      this.plateStability = Math.min(100, this.plateStability + 12);
       this.teacherGap = Math.min(7.4, this.teacherGap + 1.45);
       this.events.push({ type: "shield", amount: 0 });
       return;
@@ -378,6 +387,7 @@ export class MessRunSimulation {
     const rightLoss = baseLoss * (primaryRight ? 1.15 : 0.55);
     this.leftTray = Math.max(0, this.leftTray - leftLoss);
     this.rightTray = Math.max(0, this.rightTray - rightLoss);
+    this.plateStability = Math.max(0, this.plateStability - 18);
     this.teacherGap = Math.max(CATCH_GAP, this.teacherGap - 1.08 * this.teacher.aggression);
     this.events.push({
       type: "hit",

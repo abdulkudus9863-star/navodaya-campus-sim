@@ -68,6 +68,7 @@ const schema = defineSchema(
     /** Validated run records for the campus endless-runner mini-game. */
     messRunRuns: defineTable({
       userId: v.id("users"),
+      playerId: v.string(),
       teacherId: v.string(),
       mode: v.string(),
       outcome: v.union(v.literal("caught"), v.literal("empty"), v.literal("delivered")),

@@ -80,6 +80,10 @@ export const submitRun = mutation({
       nearMisses,
       mode: mode.id,
     });
+    const identity = await ctx.db
+      .query("playerIdentities")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
 
     const previousBest = await ctx.db
       .query("messRunRuns")
@@ -89,6 +93,7 @@ export const submitRun = mutation({
 
     const runId = await ctx.db.insert("messRunRuns", {
       userId,
+      playerId: identity?.playerId ?? String(userId),
       teacherId: args.teacherId,
       mode: mode.id,
       outcome,

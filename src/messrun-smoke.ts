@@ -36,6 +36,7 @@ console.log("MESS RUN mechanics audit");
   check("starts with two full trays", sim.leftTray === 100 && sim.rightTray === 100);
   check("starts in the centre lane", sim.lane === 1);
   check("starts running", sim.phase === "running");
+  check("starts with stable trays", sim.plateStability === 100);
 }
 
 {
@@ -56,6 +57,16 @@ console.log("MESS RUN mechanics audit");
   check("jump leaves the ground", sim.playerY > 0.3 && !sim.grounded);
   for (let index = 0; index < 90; index += 1) sim.update(1 / 60);
   check("jump lands again", sim.playerY === 0 && sim.grounded);
+  check("a normal jump keeps both trays level", sim.leftTray === 100 && sim.rightTray === 100);
+}
+
+{
+  const sim = makeSim();
+  sim.jump();
+  for (let index = 0; index < 8; index += 1) sim.update(1 / 60);
+  sim.slide();
+  for (let index = 0; index < 60 && !sim.grounded; index += 1) sim.update(1 / 60);
+  check("a forced dive landing spills food", sim.grounded && sim.foodLeft < 100);
 }
 
 {
@@ -77,6 +88,7 @@ console.log("MESS RUN mechanics audit");
     sim.update(0.05);
     check("a same-lane collision spills food", sim.foodLeft < foodBefore);
     check("a collision brings the teacher closer", sim.teacherGap < 5.4);
+    check("a collision shakes the trays", sim.plateStability < 100);
   }
 }
 
