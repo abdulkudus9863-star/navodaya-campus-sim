@@ -1,6 +1,11 @@
 import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { Infer, v } from "convex/values";
+import {
+  achievementRecordValidator,
+  appearanceValidator,
+  xpHistoryValidator,
+} from "./identityValidators";
 
 // default user roles. can add / remove based on the project as needed
 export const ROLES = {
@@ -31,6 +36,32 @@ const schema = defineSchema(
 
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify
+
+    // ---------------------------------------------------------------- identity
+
+    /**
+     * The account-level identity. One record per authenticated user, created
+     * from the existing local player save exactly once. The house/student pair
+     * is immutable here and is validated against the game's canonical roster.
+     */
+    playerIdentities: defineTable({
+      userId: v.id("users"),
+      playerId: v.string(),
+      characterId: v.string(),
+      houseId: v.string(),
+      displayName: v.string(),
+      className: v.string(),
+      section: v.union(v.string(), v.null()),
+      roomNumber: v.union(v.string(), v.null()),
+      appearance: appearanceValidator,
+      xp: v.number(),
+      achievements: v.array(achievementRecordValidator),
+      xpHistory: v.array(xpHistoryValidator),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_player", ["playerId"]),
 
     // ---------------------------------------------------------------- multiplayer
 

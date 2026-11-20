@@ -437,6 +437,9 @@ export class SaveSystem {
   save(data: SaveData): boolean {
     try {
       window.localStorage.setItem(KEY, JSON.stringify(data));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("navodaya:save-changed"));
+      }
       return true;
     } catch {
       return false;
@@ -446,6 +449,9 @@ export class SaveSystem {
   clear(): void {
     try {
       window.localStorage.removeItem(KEY);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("navodaya:save-changed"));
+      }
     } catch {
       /* ignore */
     }

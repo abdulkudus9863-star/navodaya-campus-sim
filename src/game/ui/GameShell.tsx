@@ -44,6 +44,7 @@ import { CampusMap } from "./CampusMap";
 import { CampusPlan } from "./CampusPlan";
 import { CharacterCreation } from "./CharacterCreation";
 import { HouseEmblem } from "./HouseVisuals";
+import { usePlayerIdentity } from "@/identity/PlayerIdentityProvider";
 import { InteractionMenu } from "./InteractionMenu";
 import { MiniMap } from "./MiniMap";
 import { MobileControls } from "./MobileControls";
@@ -95,6 +96,7 @@ export function GameShell({
   const state = useGameState(store);
   const [engine, setEngine] = useState<GameEngine | null>(null);
   const [mapWaypoint, setMapWaypoint] = useState<MapWaypoint | null>(null);
+  const { identity, recordAchievement } = usePlayerIdentity();
 
   useEffect(() => {
     if (state.screen === "menu") setMapWaypoint(null);
@@ -113,6 +115,28 @@ export function GameShell({
   }, [store]);
 
   const ready = state.load.status === "ready";
+
+  // Route verified achievement unlocks into the account identity layer.
+  useEffect(() => {
+    if (!engine) return;
+    engine.setIdentityProgressSink(recordAchievement);
+    return () => engine.setIdentityProgressSink(null);
+  }, [engine, recordAchievement]);
+
+  // The account appearance is authoritative once the same house/student save
+  // is open, so a returning player sees their saved look immediately.
+  const identityAppearanceKey = identity ? JSON.stringify(identity.appearance) : "";
+  useEffect(() => {
+    if (!engine || !identity || !state.profile) return;
+    if (
+      identity.houseId !== state.profile.houseId ||
+      identity.characterId !== state.profile.characterId
+    ) {
+      return;
+    }
+    if (JSON.stringify(engine.getCharacter()) === identityAppearanceKey) return;
+    engine.setCharacter(identity.appearance);
+  }, [engine, identity, identityAppearanceKey, state.profile?.characterId, state.profile?.houseId]);
 
   // The landing page can ask the existing menu to resume a save or open the
   // existing campus tour. No second entry flow is created here.
@@ -725,6 +749,21 @@ function Hud({
   const principal = state.principalReferral?.active ? state.principalReferral : null;
   const profile = state.profile;
   const house = profile ? getHouse(profile.houseId) : null;
+  const { identity } = usePlayerIdentity();
+  const accountMatches = Boolean(
+    profile &&
+      identity &&
+      identity.characterId === profile.characterId &&
+      identity.houseId === profile.houseId,
+  );
+  const playerName = accountMatches ? identity!.displayName : profile?.characterName ?? "";
+  const playerLevel = accountMatches ? identity!.level : profile?.level ?? 1;
+  const initials = playerName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 font-ui">
@@ -838,17 +877,24 @@ function Hud({
           <button
             type="button"
             onClick={() => engine?.openProfile()}
-            aria-label="Open player profile"
+            aria-label={`Open ${playerName}'s player profile`}
             data-testid="hud-profile"
             className="pointer-events-auto flex items-center gap-2 border border-foreground/15 bg-black/35 px-2 py-1.5 backdrop-blur-sm transition hover:border-primary/50"
           >
+            <span
+              className="hidden size-7 items-center justify-center rounded-full border font-display text-[10px] tracking-wide text-[#f1e7d2] sm:flex"
+              style={{ borderColor: `${house.color}AA`, backgroundColor: `${house.color}2E` }}
+              aria-hidden="true"
+            >
+              {initials || "N"}
+            </span>
             <HouseEmblem houseId={house.id} size={26} />
             <span className="text-left">
               <span className="hidden font-display text-[13px] leading-tight text-[#f2e7d2] sm:block">
-                {profile.characterName}
+                {playerName}
               </span>
               <span className="mt-0.5 block font-ui text-[8px] uppercase tracking-[0.16em] text-foreground/40">
-                {house.shortName} · Lv {profile.level}
+                {house.shortName} · Lv {playerLevel}
               </span>
             </span>
           </button>
@@ -1492,6 +1538,17 @@ function PauseMenu({ state, engine }: { state: GameUIState; engine: GameEngine |
               label="Player profile"
               detail={`${getHouse(state.profile.houseId)?.shortName ?? "House"} · Level ${state.profile.level} · Achievements`}
               onClick={() => engine?.openProfile()}
+            />
+          )}
+          {state.profile && (
+            <MenuRow
+              index="ID"
+              label="Player identity"
+              detail="Account house · 3D appearance · Verified achievements"
+              onClick={() => {
+                engine?.saveGame(true);
+                window.location.assign("/profile");
+              }}
             />
           )}
           {dutyAvailable && (

@@ -1,5 +1,6 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
+import { PlayerIdentityProvider } from "@/identity/PlayerIdentityProvider";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
@@ -11,6 +12,7 @@ import "./index.css";
 // Lazy load route components for better code splitting
 const Landing = lazy(() => import("./pages/Landing.tsx"));
 const Play = lazy(() => import("./pages/Play.tsx"));
+const ProfilePage = lazy(() => import("./pages/Profile.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Multiplayer = lazy(() => import("./pages/Multiplayer.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
@@ -119,19 +121,22 @@ createRoot(document.getElementById("root")!).render(
         <VlyToolbar />
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
-        <BrowserRouter>
-          <RouteSyncer />
-          <Suspense fallback={<RouteLoading />}>
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/play" element={<Play />} />
-              <Route path="/multiplayer" element={<Multiplayer />} />
-              <Route path="/auth" element={<AuthPage redirectAfterAuth="/play" />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-        <Toaster />
+        <PlayerIdentityProvider>
+          <BrowserRouter>
+            <RouteSyncer />
+            <Suspense fallback={<RouteLoading />}>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/play" element={<Play />} />
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/multiplayer" element={<Multiplayer />} />
+                <Route path="/auth" element={<AuthPage redirectAfterAuth="/play" />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+          <Toaster />
+        </PlayerIdentityProvider>
       </ConvexAuthProvider>
     </RootErrorBoundary>
   </StrictMode>,

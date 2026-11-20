@@ -383,7 +383,8 @@ export function ProfilePanel({
             <p className="flex items-start gap-2 border-t border-foreground/10 pt-3 font-ui text-[9px] leading-relaxed text-foreground/25">
               <Shield className="mt-0.5 size-3 shrink-0" />
               In-game roster representation. No photographs, biographies or personal details have
-              been supplied or invented. This is a single-player local save, not an online account.
+              been supplied or invented. Gameplay progress stays in the existing local save;
+              appearance and verified achievements also sync to your signed-in player identity.
             </p>
           </div>
         </div>

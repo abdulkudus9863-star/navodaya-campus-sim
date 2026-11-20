@@ -12,12 +12,11 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
-import { SaveSystem } from "@/game/core/SaveSystem";
 import { xpProgress } from "@/game/data/achievements";
-import { HOUSES, type HouseId } from "@/game/data/houses";
-import { toProfileView } from "@/game/data/profile";
+import { getHouse, HOUSES, isHouseId, type HouseId } from "@/game/data/houses";
 import { HouseEmblem } from "@/game/ui/HouseVisuals";
 import { useAuth } from "@/hooks/use-auth";
+import { usePlayerIdentity } from "@/identity/PlayerIdentityProvider";
 
 const NAV_ITEMS = [
   { label: "Houses", href: "#houses" },
@@ -158,6 +157,7 @@ function Landing() {
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const { isAuthenticated, isLoading: authLoading, user, signOut } = useAuth();
+  const { identity, local, localChecked, identityLoading } = usePlayerIdentity();
   const location = useLocation();
   const welcomeIntent = new URLSearchParams(location.search).get("welcome") === "1";
 
@@ -165,36 +165,39 @@ function Landing() {
   const exploreHref = saved ? "/play?intent=tour" : "/play";
 
   useEffect(() => {
-    try {
-      const result = new SaveSystem().load();
-      if (!result.ok) return;
-      const profile = toProfileView(result.data.profile);
-      if (!profile) return;
-      const initials =
-        profile.characterName
-          .split(/\s+/)
-          .filter(Boolean)
-          .slice(0, 2)
-          .map((part) => part[0]?.toUpperCase() ?? "")
-          .join("") || "N";
-      const progress = xpProgress(profile.xp);
-      setSaved({
-        name: profile.characterName,
-        initials,
-        className: profile.className,
-        houseId: profile.houseId,
-        houseName: profile.houseName,
-        houseColor: profile.houseColor,
-        level: profile.level,
-        xp: profile.xp,
-        percent: progress.percent,
-      });
-    } catch {
-      // A blocked or malformed local save must never break the landing page.
-    } finally {
-      setSaveChecked(true);
+    const houseId =
+      identity && isHouseId(identity.houseId)
+        ? identity.houseId
+        : local?.profile.houseId ?? null;
+    const house = houseId ? getHouse(houseId) : undefined;
+    const name = identity?.displayName ?? local?.profile.characterName ?? "";
+    if (!house || !name) {
+      setSaved(null);
+      setSaveChecked(localChecked && !identityLoading);
+      return;
     }
-  }, []);
+    const initials =
+      name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() ?? "")
+        .join("") || "N";
+    const xp = identity?.xp ?? local?.profile.xp ?? 0;
+    const progress = xpProgress(xp);
+    setSaved({
+      name,
+      initials,
+      className: identity?.className ?? local?.profile.className ?? "",
+      houseId: house.id,
+      houseName: house.name,
+      houseColor: house.color,
+      level: identity?.level ?? progress.level,
+      xp,
+      percent: progress.percent,
+    });
+    setSaveChecked(localChecked && !identityLoading);
+  }, [identity, local, localChecked, identityLoading]);
 
   useEffect(() => {
     document.title = "NAVODAYA: THE CAMPUS LIFE";
@@ -317,10 +320,10 @@ function Landing() {
 
             {isAuthenticated ? (
               <Link
-                to={saved ? "/play?intent=continue" : "/play"}
+                to="/profile"
                 className="inline-flex min-h-10 items-center justify-center border border-[#D5B46A]/60 px-3.5 font-ui text-[9px] font-semibold uppercase tracking-[0.2em] text-[#D5B46A] transition-colors hover:border-[#D5B46A] hover:bg-[#D5B46A]/10 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#D5B46A] sm:px-4"
               >
-                {saved ? "Continue" : "My Campus"}
+                Profile
               </Link>
             ) : (
               <Link
@@ -363,11 +366,11 @@ function Landing() {
               </a>
             ))}
             <Link
-              to={isAuthenticated ? (saved ? "/play?intent=continue" : "/play") : SIGN_IN_HREF}
+              to={isAuthenticated ? "/profile" : SIGN_IN_HREF}
               onClick={closeMenu}
               className="mt-4 flex min-h-12 items-center justify-center border border-[#D5B46A] bg-[#D5B46A] px-5 font-ui text-[9px] font-semibold uppercase tracking-[0.24em] text-[#0B1511]"
             >
-              {isAuthenticated ? (saved ? "Continue Journey" : "Choose Your House") : "Sign In To Get Your House"}
+              {isAuthenticated ? "View Player Profile" : "Sign In To Get Your House"}
             </Link>
           </nav>
         </div>
@@ -633,6 +636,13 @@ function Landing() {
 
                     <div className="flex flex-col gap-2 sm:flex-row lg:flex-col lg:items-stretch">
                       <GoldButton to="/play?intent=continue">CONTINUE JOURNEY</GoldButton>
+                      <Link
+                        to="/profile"
+                        className="inline-flex min-h-12 items-center justify-center gap-2 border border-[#D5B46A]/40 px-5 font-ui text-[9px] uppercase tracking-[0.22em] text-[#D5B46A] transition-colors hover:border-[#D5B46A] hover:bg-[#D5B46A]/8 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#D5B46A]"
+                      >
+                        Player profile
+                        <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
+                      </Link>
                       <button
                         type="button"
                         onClick={() => void handleSignOut()}

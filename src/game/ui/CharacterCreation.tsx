@@ -1,11 +1,12 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Check, LogOut, Shield, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, Check, Lock, LogOut, Shield, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_CHARACTER_ID,
   DEFAULT_HOUSE_ID,
   HOUSES,
   getHouse,
+  isHouseId,
   type HouseId,
 } from "../data/houses";
 import { getStudentsForHouse, getStudent } from "../data/students";
@@ -14,6 +15,7 @@ import type { GameEngine } from "../core/GameEngine";
 import { DEFAULT_CHARACTER, type CharacterSettings } from "../core/types";
 import { CharacterPreview3D } from "./CharacterPreview3D";
 import { HouseEmblem, HouseFlag, StudentAvatar } from "./HouseVisuals";
+import { usePlayerIdentity } from "@/identity/PlayerIdentityProvider";
 
 type Stage = "house" | "house-confirm" | "students" | "character" | "final";
 
@@ -39,6 +41,16 @@ export function CharacterCreation({
     () => engine?.getCharacter() ?? DEFAULT_CHARACTER,
   );
   const [error, setError] = useState<string | null>(null);
+  const { identity } = usePlayerIdentity();
+  const accountHouseId =
+    identity && isHouseId(identity.houseId) ? identity.houseId : null;
+
+  useEffect(() => {
+    if (!identity || !isHouseId(identity.houseId)) return;
+    setSelectedHouseId(identity.houseId);
+    setSelectedStudentId(identity.characterId);
+    setCharacter(identity.appearance);
+  }, [identity]);
 
   const house = getHouse(selectedHouseId) ?? getHouse(DEFAULT_HOUSE_ID)!;
   const students = useMemo(() => getStudentsForHouse(selectedHouseId), [selectedHouseId]);
@@ -49,6 +61,7 @@ export function CharacterCreation({
   const standing = standingsForHouse(selectedHouseId);
 
   const chooseHouse = (houseId: HouseId) => {
+    if (accountHouseId && houseId !== accountHouseId) return;
     setSelectedHouseId(houseId);
     setSelectedStudentId(getStudentsForHouse(houseId)[0]?.id ?? "");
     setError(null);
@@ -130,14 +143,16 @@ export function CharacterCreation({
                     your colours and the House Cup table you wake up to.
                   </p>
                   <p className="mt-2 font-ui text-[11px] leading-relaxed text-foreground/40">
-                    Aravali is preselected for the initial character. You can choose any house
-                    before confirming.
+                    {accountHouseId
+                      ? "Your house is already saved to your account and stays locked. You can choose a student within that house."
+                      : "Aravali is preselected for the initial character. You can choose any house before confirming."}
                   </p>
                 </div>
 
                 <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {HOUSES.map((candidate) => {
                     const selected = candidate.id === selectedHouseId;
+                    const locked = Boolean(accountHouseId && candidate.id !== accountHouseId);
                     const points = standingsForHouse(candidate.id);
                     return (
                       <button
@@ -145,11 +160,15 @@ export function CharacterCreation({
                         type="button"
                         data-testid={`house-card-${candidate.id}`}
                         aria-pressed={selected}
+                        aria-disabled={locked}
+                        disabled={locked}
                         onClick={() => chooseHouse(candidate.id)}
                         className={`group relative overflow-hidden border p-5 text-left transition duration-300 ${
                           selected
                             ? "border-[#f8eed6]/55 bg-[#15130f] shadow-[0_30px_80px_-50px_rgba(0,0,0,1)]"
-                            : "border-foreground/12 bg-[#100e0b]/75 hover:border-foreground/30 hover:bg-[#15120e]"
+                            : locked
+                              ? "cursor-not-allowed border-foreground/8 bg-[#0d0b09]/55 opacity-40"
+                              : "border-foreground/12 bg-[#100e0b]/75 hover:border-foreground/30 hover:bg-[#15120e]"
                         }`}
                         style={selected ? { boxShadow: `inset 0 0 0 1px ${candidate.color}55, 0 30px 70px -50px #000` } : undefined}
                       >
@@ -164,7 +183,8 @@ export function CharacterCreation({
                               className="inline-flex items-center gap-1.5 border px-2 py-1 font-ui text-[8px] uppercase tracking-[0.2em]"
                               style={{ borderColor: `${candidate.color}99`, color: "#f8eed6" }}
                             >
-                              <Check className="size-2.5" /> Selected
+                              {accountHouseId ? <Lock className="size-2.5" /> : <Check className="size-2.5" />}
+                              {accountHouseId ? "Account house" : "Selected"}
                             </span>
                           )}
                         </div>

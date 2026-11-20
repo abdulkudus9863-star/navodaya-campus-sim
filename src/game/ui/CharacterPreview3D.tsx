@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { SKIN_TONES, type CharacterSettings } from "../core/types";
 import {
@@ -26,6 +26,7 @@ export function CharacterPreview3D({
   className?: string;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const [unavailable, setUnavailable] = useState(false);
   const rigRef = useRef<CharacterRig | null>(null);
   const optionsRef = useRef<CharacterOptions>(
     characterOptions(character, houseColor, SKIN_TONES[character.skin], "high"),
@@ -52,7 +53,17 @@ export function CharacterPreview3D({
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 30);
     camera.position.set(0, 1.15, 3.7);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: "low-power",
+      });
+    } catch {
+      setUnavailable(true);
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -236,9 +247,24 @@ export function CharacterPreview3D({
       data-testid="character-preview-3d"
       className={`relative touch-none overflow-hidden rounded-sm border border-foreground/15 bg-[radial-gradient(65%_60%_at_50%_35%,#29372b_0%,#111610_65%,#090c09_100%)] ${className}`}
     >
-      <span className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap font-ui text-[8px] uppercase tracking-[0.18em] text-foreground/35">
-        Drag to rotate · pinch to zoom
-      </span>
+      {unavailable ? (
+        <div className="flex h-full min-h-56 flex-col items-center justify-center px-5 text-center">
+          <span className="flex size-12 items-center justify-center rounded-full border border-[#d5b46a]/35 text-[#d5b46a]">
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+              <path d="M12 3 21 20H3Z" />
+              <path d="M12 9v5M12 17.2v.2" />
+            </svg>
+          </span>
+          <p className="mt-3 font-display text-base text-[#f1ead8]">3D preview unavailable</p>
+          <p className="mt-1 font-ui text-[9px] leading-4 text-[#b4bba9]/55">
+            This device could not start WebGL. The saved appearance is still intact.
+          </p>
+        </div>
+      ) : (
+        <span className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap font-ui text-[8px] uppercase tracking-[0.18em] text-foreground/35">
+          Drag to rotate · pinch to zoom
+        </span>
+      )}
     </div>
   );
 }

@@ -169,6 +169,7 @@ export class GameEngine {
   private gardenDutyTimer: number | null = null;
   private audio = new AudioSystem();
   private profile: PlayerProfileSave | null = null;
+  private identityProgressSink: ((achievementId: string) => void) | null = null;
   private escapeData: EscapeSave | null = null;
   private nightMode = false;
   private nightCaughtHandled = false;
@@ -1675,7 +1676,10 @@ export class GameEngine {
       if (!this.profile) break;
       const award = awardProgress(this.profile, 0, id);
       this.profile = award.profile;
-      if (award.achievementAdded) newAchievementIds.push(id);
+      if (award.achievementAdded) {
+        newAchievementIds.push(id);
+        this.identityProgressSink?.(id);
+      }
     }
 
     const achievements = Array.from(new Set([...data.achievements, ...newAchievementIds]));
@@ -2139,6 +2143,15 @@ export class GameEngine {
     const house = this.profile ? getHouse(this.profile.houseId) : undefined;
     this.player.setCharacter(character, house?.color ?? UNIFORM_COLORS[character.uniform]);
     this.audio.uiClick();
+  }
+
+  /**
+   * Connects verified in-game achievement events to the account identity layer.
+   * The sink cannot award arbitrary XP; the backend maps the achievement ID to
+   * its canonical reward and records it once.
+   */
+  setIdentityProgressSink(sink: ((achievementId: string) => void) | null): void {
+    this.identityProgressSink = sink;
   }
 
   getCharacter(): CharacterSettings {
@@ -3619,6 +3632,9 @@ export class GameEngine {
     this.profile = result.profile;
     const view = toProfileView(this.profile);
     if (view) this.store.patch({ profile: view });
+    if (achievementId && result.achievementAdded) {
+      this.identityProgressSink?.(achievementId);
+    }
     return { xpAwarded: result.awardedXp, alreadyClaimed };
   }
 
