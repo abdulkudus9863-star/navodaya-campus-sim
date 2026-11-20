@@ -39,6 +39,13 @@ export const submitRun = mutation({
     coins: v.number(),
     nearMisses: v.number(),
     obstaclesAvoided: v.number(),
+    chicken: v.optional(v.number()),
+    fries: v.optional(v.number()),
+    samosa: v.optional(v.number()),
+    burger: v.optional(v.number()),
+    coldDrink: v.optional(v.number()),
+    chickenFeasts: v.optional(v.number()),
+    boostScore: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -62,6 +69,25 @@ export const submitRun = mutation({
       0,
       durationSeconds * 3 + 20,
     );
+    const collectibleLimit = Math.floor(durationSeconds * 2 + 20);
+    const chicken = clamp(Math.floor(args.chicken ?? 0), 0, collectibleLimit);
+    const fries = clamp(Math.floor(args.fries ?? 0), 0, collectibleLimit);
+    const samosa = clamp(Math.floor(args.samosa ?? 0), 0, collectibleLimit);
+    const burger = clamp(Math.floor(args.burger ?? 0), 0, collectibleLimit);
+    const coldDrink = clamp(Math.floor(args.coldDrink ?? 0), 0, collectibleLimit);
+    const chickenFeasts = clamp(
+      Math.floor(args.chickenFeasts ?? 0),
+      0,
+      Math.floor(chicken / 5),
+    );
+    // The temporary burger/feast multiplier only adds score during its active
+    // window. Accept a bounded boost that cannot exceed the theoretical extra
+    // distance and collectible points those pickups can generate.
+    const boostScore = clamp(
+      Math.floor(args.boostScore ?? 0),
+      0,
+      burger * 320 + chickenFeasts * 450,
+    );
 
     if (outcome === "delivered") {
       if (
@@ -79,6 +105,9 @@ export const submitRun = mutation({
       coins,
       nearMisses,
       mode: mode.id,
+      collectibles: { chicken, fries, samosa, burger, coldDrink },
+      chickenFeasts,
+      boostScore,
     });
     const identity = await ctx.db
       .query("playerIdentities")
@@ -106,6 +135,13 @@ export const submitRun = mutation({
       coins,
       nearMisses,
       obstaclesAvoided,
+      chicken,
+      fries,
+      samosa,
+      burger,
+      coldDrink,
+      chickenFeasts,
+      boostScore,
       createdAt: Date.now(),
     });
 
@@ -157,6 +193,14 @@ export const mySummary = query({
             coins: best.coins,
             durationMs: best.durationMs,
             outcome: best.outcome,
+            collectibles: {
+              chicken: best.chicken ?? 0,
+              fries: best.fries ?? 0,
+              samosa: best.samosa ?? 0,
+              burger: best.burger ?? 0,
+              coldDrink: best.coldDrink ?? 0,
+            },
+            chickenFeasts: best.chickenFeasts ?? 0,
             at: best.createdAt,
           }
         : null,
@@ -169,6 +213,14 @@ export const mySummary = query({
         coins: run.coins,
         durationMs: run.durationMs,
         outcome: run.outcome,
+        collectibles: {
+          chicken: run.chicken ?? 0,
+          fries: run.fries ?? 0,
+          samosa: run.samosa ?? 0,
+          burger: run.burger ?? 0,
+          coldDrink: run.coldDrink ?? 0,
+        },
+        chickenFeasts: run.chickenFeasts ?? 0,
         at: run.createdAt,
       })),
     };

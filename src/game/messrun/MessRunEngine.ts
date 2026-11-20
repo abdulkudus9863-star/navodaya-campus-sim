@@ -42,6 +42,13 @@ interface TrayRig {
   liquid: THREE.Mesh | null;
 }
 
+interface PickupRing {
+  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  life: number;
+  maxLife: number;
+  scale: number;
+}
+
 const LANE_X = [-2.05, 0, 2.05] as const;
 const CHUNK_COUNT = 7;
 const CHUNK_LENGTH = 40;
@@ -131,11 +138,15 @@ export class MessRunEngine {
     full: [],
   };
   private readonly pickupPools: Record<PickupKind, THREE.Group[]> = {
+    chicken: [],
+    fries: [],
+    samosa: [],
+    burger: [],
+    coldDrink: [],
     token: [],
-    shield: [],
-    food: [],
   };
   private readonly particles: Particle[] = [];
+  private readonly pickupRings: PickupRing[] = [];
   private readonly tray: { left: TrayRig; right: TrayRig };
   private readonly unitBox = new THREE.BoxGeometry(1, 1, 1);
   private readonly unitCylinder = new THREE.CylinderGeometry(0.5, 0.5, 1, 12);
@@ -145,6 +156,7 @@ export class MessRunEngine {
   private readonly trayGeo = new THREE.BoxGeometry(1, 1, 1);
   private readonly openCylinder = new THREE.CylinderGeometry(0.5, 0.46, 1, 14, 1, true);
   private readonly materials: Record<string, THREE.MeshStandardMaterial>;
+  private readonly pickupGlows: Record<"gold" | "warm" | "mint", THREE.MeshBasicMaterial>;
   private readonly particleMaterials: THREE.MeshStandardMaterial[];
 
   private animationFrame = 0;
@@ -212,11 +224,19 @@ export class MessRunEngine {
       patty: material("#6e3f24", 0.92),
       cheese: material("#e4b74e", 0.58),
       lettuce: material("#6f9b49", 0.92),
-      shield: material("#8bc8c6", 0.3, 0.3, {
-        emissive: new THREE.Color("#2e7774"),
-        emissiveIntensity: 0.6,
-      }),
+      chicken: material("#b66f31", 0.72),
+      chickenCrisp: material("#d99545", 0.6),
+      fries: material("#e8b94f", 0.62),
+      carton: material("#a84130", 0.78),
+      samosa: material("#d6a04b", 0.66),
+      samosaDark: material("#99602c", 0.82),
       dust: material("#9e8055", 0.98, 0, { transparent: true, opacity: 0.5 }),
+    };
+
+    this.pickupGlows = {
+      gold: this.createGlow("#e7c47d"),
+      warm: this.createGlow("#d98b49"),
+      mint: this.createGlow("#9fd3bd"),
     };
 
     const particlePalette = ["#d7b46a", "#eadfc4", "#c98e3a", "#59753d", "#c8945f"];
@@ -268,6 +288,7 @@ export class MessRunEngine {
     this.scene.add(this.teacherGroup);
 
     this.buildParticles();
+    this.buildPickupRings();
     this.scene.add(this.worldGroup, this.obstacleGroup, this.pickupGroup, this.particleGroup);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -371,8 +392,15 @@ export class MessRunEngine {
       case "slide":
         this.audio.slide();
         break;
-      case "token":
-        this.audio.coin();
+      case "collect":
+        if (event.kind === "token") this.audio.coin();
+        else this.audio.food(event.kind);
+        this.spawnPickupBurst(event.kind);
+        break;
+      case "feast":
+        this.audio.feast();
+        this.shake = Math.min(1, this.shake + 0.35);
+        this.spawnFeastBurst();
         break;
       case "near-miss":
         this.audio.nearMiss();
@@ -381,12 +409,6 @@ export class MessRunEngine {
         this.audio.hit();
         this.shake = Math.min(1, this.shake + 0.85);
         this.spawnFoodBurst(event.tray);
-        break;
-      case "shield":
-        this.audio.power();
-        break;
-      case "food-bonus":
-        this.audio.power();
         break;
       case "land":
         if (event.impact > 0.35) this.audio.footstep(true);
@@ -415,6 +437,16 @@ export class MessRunEngine {
     this.camera.fov = width < 700 ? 64 : 58;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
+  }
+
+  private createGlow(color: string): THREE.MeshBasicMaterial {
+    return new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.2,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
   }
 
   private addLights(): void {
@@ -625,6 +657,24 @@ export class MessRunEngine {
     return { group, foods, liquid };
   }
 
+  private buildPickupRings(): void {
+    for (let index = 0; index < 8; index += 1) {
+      const material = new THREE.MeshBasicMaterial({
+        color: "#e7c47d",
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(this.unitTorus, material);
+      mesh.rotation.x = Math.PI / 2;
+      mesh.visible = false;
+      this.particleGroup.add(mesh);
+      this.pickupRings.push({ mesh, life: 0, maxLife: 0.42, scale: 1 });
+    }
+  }
+
   private buildParticles(): void {
     for (let index = 0; index < 46; index += 1) {
       const mesh = new THREE.Mesh(this.unitBox, this.materials.gold);
@@ -649,6 +699,7 @@ export class MessRunEngine {
     this.syncObstacles();
     this.syncPickups();
     this.updateParticles(dt);
+    this.updatePickupRings(dt);
   }
 
   private syncObstacles(): void {
@@ -672,7 +723,11 @@ export class MessRunEngine {
   }
 
   private syncPickups(): void {
-    const active = new Set(this.simulation.pickups.map((pickup) => pickup.id));
+    const active = new Set(
+      this.simulation.pickups
+        .filter((pickup) => !pickup.collected)
+        .map((pickup) => pickup.id),
+    );
     for (const [id, visual] of this.pickupVisuals) {
       if (active.has(id)) continue;
       visual.group.visible = false;
@@ -783,35 +838,146 @@ export class MessRunEngine {
       this.pickupGroup.add(pooled);
       return pooled;
     }
+
     const group = new THREE.Group();
-    if (kind === "token") {
+    const glowTone =
+      kind === "coldDrink" ? "mint" : kind === "token" ? "gold" : "warm";
+    const glow = new THREE.Mesh(this.unitTorus, this.pickupGlows[glowTone]);
+    glow.rotation.x = Math.PI / 2;
+    glow.position.y = -0.16;
+    glow.scale.setScalar(kind === "token" ? 0.78 : 0.68);
+    group.add(glow);
+    group.userData.glow = glow;
+
+    if (kind === "chicken") {
+      const bone = cylinder(
+        group,
+        this.unitCylinder,
+        this.materials.cream,
+        -0.15,
+        0.01,
+        0,
+        0.04,
+        0.27,
+        { z: Math.PI / 2 },
+      );
+      bone.position.y = 0.01;
+      const meat = new THREE.Mesh(this.unitSphere, this.materials.chicken);
+      meat.position.set(0.09, 0.02, 0);
+      meat.scale.set(0.37, 0.3, 0.32);
+      group.add(meat);
+      const crust = new THREE.Mesh(this.unitSphere, this.materials.chickenCrisp);
+      crust.position.set(0.01, 0.09, 0.06);
+      crust.scale.set(0.26, 0.2, 0.23);
+      group.add(crust);
+      const crisp = new THREE.Mesh(this.unitTorus, this.materials.chickenCrisp);
+      crisp.position.set(-0.01, -0.02, 0.02);
+      crisp.rotation.x = Math.PI / 2;
+      crisp.scale.setScalar(0.28);
+      group.add(crisp);
+    } else if (kind === "fries") {
+      box(group, this.unitBox, this.materials.carton, 0, -0.08, 0, 0.3, 0.3, 0.19);
+      box(group, this.unitBox, this.materials.cream, 0, 0.065, 0.098, 0.27, 0.06, 0.012);
+      for (let index = 0; index < 5; index += 1) {
+        box(
+          group,
+          this.unitBox,
+          this.materials.fries,
+          -0.11 + index * 0.055,
+          0.17 + (index % 2) * 0.03,
+          (index % 2 ? 1 : -1) * 0.035,
+          0.045,
+          0.27,
+          0.045,
+          { z: -0.16 + index * 0.08, x: (index % 2 ? 1 : -1) * 0.08 },
+        );
+      }
+    } else if (kind === "samosa") {
+      const samosa = new THREE.Mesh(
+        new THREE.ConeGeometry(0.34, 0.42, 4, 1),
+        this.materials.samosa,
+      );
+      samosa.rotation.y = Math.PI / 4;
+      samosa.scale.z = 0.74;
+      samosa.position.y = 0.02;
+      group.add(samosa);
+      const seam = new THREE.Mesh(this.unitBox, this.materials.samosaDark);
+      seam.position.set(0, 0.15, 0.14);
+      seam.rotation.z = -0.18;
+      seam.scale.set(0.07, 0.2, 0.035);
+      group.add(seam);
+      const ridge = new THREE.Mesh(this.unitTorus, this.materials.samosaDark);
+      ridge.rotation.x = Math.PI / 2;
+      ridge.position.y = -0.17;
+      ridge.scale.set(0.33, 0.33, 0.2);
+      group.add(ridge);
+    } else if (kind === "burger") {
+      const bottom = new THREE.Mesh(this.unitCylinder, this.materials.bun);
+      bottom.position.y = -0.09;
+      bottom.scale.set(0.3, 0.055, 0.3);
+      group.add(bottom);
+      const patty = new THREE.Mesh(this.unitCylinder, this.materials.patty);
+      patty.position.y = -0.035;
+      patty.scale.set(0.28, 0.045, 0.28);
+      group.add(patty);
+      box(group, this.unitBox, this.materials.cheese, 0, 0.012, 0, 0.38, 0.012, 0.38, {
+        y: 0.32,
+      });
+      const lettuce = new THREE.Mesh(this.unitTorus, this.materials.lettuce);
+      lettuce.rotation.x = Math.PI / 2;
+      lettuce.position.y = 0.045;
+      lettuce.scale.set(0.34, 0.34, 0.25);
+      group.add(lettuce);
+      const top = new THREE.Mesh(this.unitSphere, this.materials.bun);
+      top.position.y = 0.12;
+      top.scale.set(0.33, 0.15, 0.33);
+      group.add(top);
+    } else if (kind === "coldDrink") {
+      const cup = new THREE.Mesh(this.openCylinder, this.materials.glass);
+      cup.scale.set(0.2, 0.36, 0.2);
+      group.add(cup);
+      const liquid = cylinder(
+        group,
+        this.unitCylinder,
+        this.materials.drink,
+        0,
+        -0.055,
+        0,
+        0.165,
+        0.22,
+      );
+      liquid.renderOrder = 1;
+      const straw = cylinder(
+        group,
+        this.unitCylinder,
+        this.materials.gold,
+        0.06,
+        0.16,
+        0,
+        0.012,
+        0.4,
+        { z: -0.2 },
+      );
+      straw.position.y = 0.16;
+      const lid = new THREE.Mesh(this.unitTorus, this.materials.cream);
+      lid.rotation.x = Math.PI / 2;
+      lid.position.y = 0.16;
+      lid.scale.setScalar(0.2);
+      group.add(lid);
+    } else {
       const coin = new THREE.Mesh(this.unitTorus, this.materials.gold);
       coin.rotation.y = Math.PI / 2;
-      coin.scale.set(0.35, 0.35, 0.35);
+      coin.scale.set(0.4, 0.4, 0.4);
       group.add(coin);
       const center = new THREE.Mesh(this.unitCylinder, this.materials.gold);
       center.rotation.z = Math.PI / 2;
-      center.scale.set(0.22, 0.055, 0.22);
+      center.scale.set(0.25, 0.06, 0.25);
       group.add(center);
-      const glow = new THREE.Mesh(this.unitSphere, this.materials.window);
-      glow.scale.setScalar(0.08);
-      group.add(glow);
-    } else if (kind === "shield") {
-      const shield = new THREE.Mesh(new THREE.OctahedronGeometry(0.34, 0), this.materials.shield);
-      group.add(shield);
-      const ring = new THREE.Mesh(this.unitTorus, this.materials.window);
-      ring.rotation.x = Math.PI / 2;
-      ring.scale.setScalar(0.45);
-      group.add(ring);
-    } else {
-      box(group, this.trayGeo, this.materials.blackTray, 0, 0, 0, 0.45, 0.04, 0.32);
-      cylinder(group, this.unitCylinder, this.materials.cream, -0.08, 0.07, 0, 0.08, 0.07);
-      cylinder(group, this.unitCylinder, this.materials.curry, 0.1, 0.06, 0, 0.07, 0.05);
-      const dome = new THREE.Mesh(this.unitSphere, this.materials.gold);
-      dome.position.y = 0.22;
-      dome.scale.set(0.2, 0.12, 0.2);
-      group.add(dome);
+      const spark = new THREE.Mesh(this.unitSphere, this.materials.window);
+      spark.scale.setScalar(0.08);
+      group.add(spark);
     }
+
     this.pickupGroup.add(group);
     return group;
   }
@@ -929,7 +1095,13 @@ export class MessRunEngine {
     }
     for (const visual of this.pickupVisuals.values()) {
       visual.group.rotation.y += dt * 2.2;
-      visual.group.position.y = 0.88 + Math.sin(this.elapsed * 3 + visual.group.position.z) * 0.06;
+      visual.group.position.y = 0.88 + Math.sin(this.elapsed * 3 + visual.group.position.z) * 0.07;
+      const glow = visual.group.userData.glow as THREE.Mesh | undefined;
+      if (glow) {
+        const pulse = 1 + Math.sin(this.elapsed * 4.4 + visual.group.position.z * 0.4) * 0.12;
+        glow.scale.setScalar((visual.kind === "token" ? 0.78 : 0.68) * pulse);
+        glow.rotation.z += dt * 0.7;
+      }
     }
   }
 
@@ -975,6 +1147,106 @@ export class MessRunEngine {
       particle.maxLife = particle.life;
       spawned += 1;
       if (spawned >= 10) break;
+    }
+  }
+
+  private spawnPickupBurst(kind: PickupKind): void {
+    const pickup = this.simulation.pickups.find(
+      (entry) => entry.collected && entry.kind === kind,
+    );
+    const visual = pickup ? this.pickupVisuals.get(pickup.id) : null;
+    const position = new THREE.Vector3(
+      this.simulation.playerX,
+      1.02,
+      0.4,
+    );
+    visual?.group.getWorldPosition(position);
+    const palettes: Record<PickupKind, number[]> = {
+      chicken: [2, 4, 0],
+      fries: [0, 2],
+      samosa: [2, 4],
+      burger: [3, 4, 0],
+      coldDrink: [1, 3],
+      token: [0, 1],
+    };
+    this.spawnBurst(position, palettes[kind], 8, 1.7);
+    const ringColors: Record<PickupKind, string> = {
+      chicken: "#d99545",
+      fries: "#e8b94f",
+      samosa: "#d6a04b",
+      burger: "#c58e4e",
+      coldDrink: "#9fd3bd",
+      token: "#e7c47d",
+    };
+    this.spawnCollectRing(position, ringColors[kind], 1);
+  }
+
+  private spawnFeastBurst(): void {
+    const position = new THREE.Vector3(this.simulation.playerX, 1.15, 0.1);
+    this.spawnBurst(position, [0, 1, 4, 3, 2], 28, 3.1);
+    this.spawnCollectRing(position, "#e7c47d", 2.1);
+    this.spawnCollectRing(
+      new THREE.Vector3(this.simulation.playerX, 0.25, 0.1),
+      "#f1e3c8",
+      1.4,
+    );
+  }
+
+  private spawnCollectRing(position: THREE.Vector3, color: string, scale: number): void {
+    const ring = this.pickupRings.find((entry) => entry.life <= 0);
+    if (!ring) return;
+    ring.mesh.visible = true;
+    ring.mesh.position.copy(position);
+    ring.mesh.position.y = Math.max(0.25, position.y - 0.18);
+    ring.mesh.material.color.set(color);
+    ring.mesh.material.opacity = 0.8;
+    ring.scale = scale;
+    ring.mesh.scale.setScalar(0.25 * scale);
+    ring.life = ring.maxLife;
+  }
+
+  private updatePickupRings(dt: number): void {
+    for (const ring of this.pickupRings) {
+      if (ring.life <= 0) continue;
+      ring.life -= dt;
+      if (ring.life <= 0) {
+        ring.mesh.visible = false;
+        continue;
+      }
+      const progress = 1 - ring.life / ring.maxLife;
+      ring.mesh.scale.setScalar((0.25 + progress * 1.15) * ring.scale);
+      ring.mesh.material.opacity = (1 - progress) * 0.8;
+      ring.mesh.position.y += dt * 0.45;
+    }
+  }
+
+  private spawnBurst(
+    position: THREE.Vector3,
+    palette: number[],
+    count: number,
+    spread: number,
+  ): void {
+    let spawned = 0;
+    for (let index = 0; index < this.particles.length; index += 1) {
+      const particle = this.particles[index];
+      if (particle.life > 0) continue;
+      particle.mesh.visible = true;
+      particle.mesh.position.copy(position);
+      particle.mesh.material = this.particleMaterials[
+        palette[index % palette.length] % this.particleMaterials.length
+      ];
+      const mat = particle.mesh.material as THREE.MeshStandardMaterial;
+      mat.opacity = 1;
+      particle.velocity.set(
+        (Math.random() - 0.5) * spread * 2,
+        1.2 + Math.random() * spread * 1.35,
+        (Math.random() - 0.5) * spread * 1.6,
+      );
+      particle.spin.set(Math.random() * 9, Math.random() * 9, Math.random() * 9);
+      particle.life = 0.55 + Math.random() * 0.75;
+      particle.maxLife = particle.life;
+      spawned += 1;
+      if (spawned >= count) break;
     }
   }
 

@@ -81,6 +81,13 @@ const schema = defineSchema(
       coins: v.number(),
       nearMisses: v.number(),
       obstaclesAvoided: v.number(),
+      chicken: v.optional(v.number()),
+      fries: v.optional(v.number()),
+      samosa: v.optional(v.number()),
+      burger: v.optional(v.number()),
+      coldDrink: v.optional(v.number()),
+      chickenFeasts: v.optional(v.number()),
+      boostScore: v.optional(v.number()),
       createdAt: v.number(),
     })
       .index("by_user", ["userId"])

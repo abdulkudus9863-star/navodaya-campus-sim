@@ -7,6 +7,7 @@ import { MessRunEngine } from "@/game/messrun/MessRunEngine";
 import {
   DEFAULT_MESS_RUN_MODE,
   DEFAULT_MESS_RUN_TEACHER,
+  MESS_RUN_FEAST_SIZE,
   MESS_RUN_MODES,
   MESS_RUN_TEACHERS,
   formatMessRunDistance,
@@ -17,6 +18,7 @@ import {
   messRunTeacher,
   readMessRunStats,
   recordMessRunResult,
+  type MessRunCollectibles,
   type MessRunLocalStats,
   type MessRunModeId,
   type MessRunResult,
@@ -24,7 +26,7 @@ import {
   type MessRunTeacherId,
 } from "@/game/messrun/messRunData";
 import type { MessRunSnapshot } from "@/game/messrun/MessRunSimulation";
-import type { SimEvent } from "@/game/messrun/MessRunSimulation";
+import type { PickupKind, SimEvent } from "@/game/messrun/MessRunSimulation";
 import { TeacherPortrait } from "@/game/ui/TeacherPortrait";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -34,11 +36,16 @@ import {
   Check,
   ChevronLeft,
   Coins,
+  CupSoda,
+  Drumstick,
+  Flame,
   Footprints,
   Gauge,
   HeartPulse,
   Loader2,
   Music2,
+  Sandwich,
+  Soup,
   Pause,
   Play,
   RotateCcw,
@@ -106,6 +113,59 @@ function DifficultyBar({ value }: { value: number }) {
         />
       ))}
     </span>
+  );
+}
+
+function CollectibleGlyph({ kind, className }: { kind: PickupKind; className?: string }) {
+  if (kind === "chicken") return <Drumstick className={className} />;
+  if (kind === "fries") return <Flame className={className} />;
+  if (kind === "samosa") return <Soup className={className} />;
+  if (kind === "burger") return <Sandwich className={className} />;
+  if (kind === "coldDrink") return <CupSoda className={className} />;
+  return <Coins className={className} />;
+}
+
+const COLLECTIBLE_LABELS: Record<PickupKind, string> = {
+  chicken: "Chicken",
+  fries: "Fries",
+  samosa: "Samosa",
+  burger: "Burger",
+  coldDrink: "Drink",
+  token: "Tokens",
+};
+
+function CollectibleCounters({
+  collectibles,
+  tokens,
+  className = "grid-cols-3",
+}: {
+  collectibles: MessRunCollectibles;
+  tokens: number;
+  className?: string;
+}) {
+  const items: Array<[PickupKind, number]> = [
+    ["chicken", collectibles.chicken],
+    ["fries", collectibles.fries],
+    ["samosa", collectibles.samosa],
+    ["burger", collectibles.burger],
+    ["coldDrink", collectibles.coldDrink],
+    ["token", tokens],
+  ];
+  return (
+    <div className={`grid gap-1.5 ${className}`}>
+      {items.map(([kind, count]) => (
+        <span
+          key={kind}
+          className="flex min-w-0 items-center gap-1 border border-[#f1ead8]/8 bg-black/20 px-1.5 py-1 font-ui text-[7px] uppercase tracking-[0.08em] text-[#e9ddc8]/52"
+        >
+          <CollectibleGlyph kind={kind} className="size-3 shrink-0 text-[#d7b46a]" />
+          <span className="truncate">{COLLECTIBLE_LABELS[kind]}</span>
+          <span className="ml-auto font-display text-[11px] leading-none tabular-nums text-[#f1e3c8]">
+            {count}
+          </span>
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -321,22 +381,39 @@ function RunHud({
               />
             </div>
           </div>
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[#f1ead8]/8 pt-2 font-ui text-[9px] text-[#e9ddc8]/53">
-            <span className="inline-flex items-center gap-1">
-              <Coins className="size-3 text-[#e7c47d]" /> {hud.coins} tokens
-            </span>
+          <div className="mt-2.5 border-t border-[#f1ead8]/8 pt-2">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="font-ui text-[8px] uppercase tracking-[0.18em] text-[#e9ddc8]/42">
+                Collected
+              </span>
+              <span className="inline-flex items-center gap-1 font-ui text-[8px] uppercase tracking-[0.1em] text-[#d7b46a]/80">
+                <Drumstick className="size-3" /> Feast {hud.chickenFeastProgress}/{MESS_RUN_FEAST_SIZE}
+                {hud.chickenFeasts > 0 ? ` · ×${hud.chickenFeasts}` : ""}
+              </span>
+            </div>
+            <CollectibleCounters collectibles={hud.collectibles} tokens={hud.coins} />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[#f1ead8]/8 pt-2 font-ui text-[9px] text-[#e9ddc8]/53">
             <span className="inline-flex items-center gap-1">
               <Footprints className="size-3 text-[#9fc4a6]" /> {Math.round(hud.speed * 3.6)} km/h
             </span>
             <span className="inline-flex items-center gap-1">
-              <Sparkles className="size-3 text-[#d7b46a]" /> ×{hud.foodMultiplier.toFixed(2)}
+              <Sparkles className="size-3 text-[#d7b46a]" /> Food ×{hud.foodMultiplier.toFixed(2)}
+            </span>
+            {hud.scoreMultiplier > 1 && (
+              <span className="inline-flex items-center gap-1 text-[#efd79f]">
+                <Flame className="size-3" /> Score ×{hud.scoreMultiplier.toFixed(2)}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1 text-[#d7b46a]/65 sm:hidden">
+              {teacher.name} · {hud.teacherGap.toFixed(1)}m
             </span>
           </div>
         </div>
       </div>
 
       <div className="absolute right-[max(0.9rem,env(safe-area-inset-right))] top-[max(0.9rem,env(safe-area-inset-top))] z-30 flex items-start gap-2">
-        <div className="border border-[#f1ead8]/14 bg-[#08100b]/84 px-3 py-2.5 backdrop-blur-md">
+        <div className="hidden border border-[#f1ead8]/14 bg-[#08100b]/84 px-3 py-2.5 backdrop-blur-md sm:block">
           <div className="flex items-center gap-2.5">
             <TeacherPortrait teacher={teacherDialogueMeta(teacher)} size={38} />
             <div>
@@ -349,9 +426,10 @@ function RunHud({
               </p>
             </div>
           </div>
-          {hud.shieldSeconds > 0 && (
-            <p className="mt-2 flex items-center gap-1.5 border-t border-[#8bc8c6]/20 pt-2 font-ui text-[8px] uppercase tracking-[0.16em] text-[#a7d8d4]">
-              <ShieldCheck className="size-3" /> Tray shield {hud.shieldSeconds}s
+          {hud.scoreMultiplier > 1 && (
+            <p className="mt-2 flex items-center gap-1.5 border-t border-[#d7b46a]/20 pt-2 font-ui text-[8px] uppercase tracking-[0.16em] text-[#efd79f]">
+              <Flame className="size-3" /> Score ×{hud.scoreMultiplier.toFixed(2)} ·{" "}
+              {hud.multiplierSeconds}s
             </p>
           )}
         </div>
@@ -500,6 +578,25 @@ function ResultsOverlay({
           ))}
         </div>
 
+        <div className="border-b border-[#f1ead8]/10 px-5 py-3 sm:px-7">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="font-ui text-[7px] uppercase tracking-[0.18em] text-[#d7b46a]/65">
+              Food collected
+            </p>
+            <p className="inline-flex items-center gap-1.5 font-ui text-[8px] uppercase tracking-[0.13em] text-[#efd79f]">
+              <Drumstick className="size-3" /> Chicken feasts ×{result.chickenFeasts}
+              {result.bestMultiplier > 1 ? (
+                <span className="text-[#e9ddc8]/38">· best ×{result.bestMultiplier.toFixed(2)}</span>
+              ) : null}
+            </p>
+          </div>
+          <CollectibleCounters
+            collectibles={result.collectibles}
+            tokens={result.coins}
+            className="grid-cols-3 sm:grid-cols-6"
+          />
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#f1ead8]/10 px-5 py-3 sm:px-7">
           <p className="font-ui text-[9px] uppercase tracking-[0.14em] text-[#e9ddc8]/40">
             Personal best · <span className="text-[#d7b46a]">{formatMessRunScore(bestScore)}</span>
@@ -606,21 +703,33 @@ export default function MessRun() {
   }, [music, sfx]);
 
   const showEvent = useCallback((event: SimEvent) => {
+    let hold = 1100;
     if (event.type === "hit") {
       setEventMessage(`Plate hit — ${event.tray === "left" ? "left" : "right"} tray spilled`);
     } else if (event.type === "near-miss") {
       setEventMessage("Clean dodge · +15 point near miss");
-    } else if (event.type === "token") {
-      setEventMessage("Mess token collected");
-    } else if (event.type === "shield") {
-      setEventMessage("Tray shield ready");
-    } else if (event.type === "food-bonus") {
-      setEventMessage("Food topped up");
+    } else if (event.type === "feast") {
+      setEventMessage(
+        `Chicken Feast · +${event.amount} · score ×${event.multiplier.toFixed(2)}`,
+      );
+      hold = 1900;
+    } else if (event.type === "collect") {
+      if (event.kind === "token") {
+        setEventMessage("Mess token collected · +25");
+      } else if (event.kind === "samosa") {
+        setEventMessage(`Samosa · both trays restored · +${event.points}`);
+      } else if (event.kind === "burger") {
+        setEventMessage(`Burger · score ×1.50 for 12s · +${event.points}`);
+      } else if (event.kind === "coldDrink") {
+        setEventMessage(`Cold drink · plate stability restored · +${event.points}`);
+      } else {
+        setEventMessage(`${COLLECTIBLE_LABELS[event.kind]} · +${event.points}`);
+      }
     } else {
       return;
     }
     if (eventTimer.current) window.clearTimeout(eventTimer.current);
-    eventTimer.current = window.setTimeout(() => setEventMessage(null), 1100);
+    eventTimer.current = window.setTimeout(() => setEventMessage(null), hold);
   }, []);
 
   const handleResult = useCallback((next: MessRunResult) => {
@@ -687,6 +796,13 @@ export default function MessRun() {
       coins: result.coins,
       nearMisses: result.nearMisses,
       obstaclesAvoided: result.obstaclesAvoided,
+      chicken: result.collectibles.chicken,
+      fries: result.collectibles.fries,
+      samosa: result.collectibles.samosa,
+      burger: result.collectibles.burger,
+      coldDrink: result.collectibles.coldDrink,
+      chickenFeasts: result.chickenFeasts,
+      boostScore: result.boostScore,
     })
       .then((saved) => {
         setServerBest(saved.bestScore);
@@ -785,11 +901,18 @@ export default function MessRun() {
           {eventMessage && !result && (
             <motion.div
               key={eventMessage}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -8 }}
-              className="pointer-events-none absolute left-1/2 top-[30%] z-30 -translate-x-1/2 border border-[#d7b46a]/35 bg-[#08100b]/88 px-4 py-2 font-ui text-[10px] uppercase tracking-[0.18em] text-[#f0dfba] shadow-xl backdrop-blur-sm"
+              className={`pointer-events-none absolute left-1/2 top-[30%] z-30 flex -translate-x-1/2 items-center gap-2 border px-4 py-2 font-ui text-[10px] uppercase tracking-[0.18em] text-[#f0dfba] shadow-xl backdrop-blur-sm ${
+                eventMessage.startsWith("Chicken Feast")
+                  ? "border-[#e7c47d]/80 bg-[#2b2413]/95 text-[#fff1c9] shadow-[0_0_50px_rgba(215,180,106,0.28)]"
+                  : "border-[#d7b46a]/35 bg-[#08100b]/88"
+              }`}
             >
+              {eventMessage.startsWith("Chicken Feast") && (
+                <Drumstick className="size-4 text-[#e7c47d]" />
+              )}
               {eventMessage}
             </motion.div>
           )}

@@ -1,7 +1,17 @@
 import {
+  EMPTY_MESS_RUN_COLLECTIBLES,
+  MESS_RUN_BURGER_MULTIPLIER,
+  MESS_RUN_BURGER_SECONDS,
+  MESS_RUN_FEAST_BONUS,
+  MESS_RUN_FEAST_MULTIPLIER,
+  MESS_RUN_FEAST_SECONDS,
+  MESS_RUN_FEAST_SIZE,
+  MESS_RUN_FOOD_POINTS,
   computeMessRunScore,
   messRunMode,
   messRunTeacher,
+  type MessRunCollectibles,
+  type MessRunFoodKind,
   type MessRunMode,
   type MessRunModeId,
   type MessRunResult,
@@ -11,7 +21,7 @@ import {
 
 export type RunnerPhase = "running" | "caught" | "empty" | "delivered";
 export type ObstacleKind = "low" | "high" | "full";
-export type PickupKind = "token" | "shield" | "food";
+export type PickupKind = MessRunFoodKind | "token";
 
 export interface SimObstacle {
   id: number;
@@ -32,10 +42,9 @@ export interface SimPickup {
 
 export type SimEvent =
   | { type: "hit"; amount: number; tray: "left" | "right" }
-  | { type: "shield"; amount: number }
   | { type: "near-miss" }
-  | { type: "token" }
-  | { type: "food-bonus"; amount: number }
+  | { type: "collect"; kind: PickupKind; points: number }
+  | { type: "feast"; amount: number; multiplier: number }
   | { type: "jump" }
   | { type: "slide" }
   | { type: "land"; impact: number }
@@ -59,7 +68,11 @@ export interface MessRunSnapshot {
   speed: number;
   teacherGap: number;
   plateStability: number;
-  shieldSeconds: number;
+  collectibles: MessRunCollectibles;
+  chickenFeastProgress: number;
+  chickenFeasts: number;
+  scoreMultiplier: number;
+  multiplierSeconds: number;
   lane: number;
   targetDistance: number | null;
   mode: MessRunModeId;
@@ -119,15 +132,21 @@ export class MessRunSimulation {
   obstaclesAvoided = 0;
   teacherGap = START_GAP;
   plateStability = 100;
-  shieldSeconds = 0;
+  collectibles: MessRunCollectibles = { ...EMPTY_MESS_RUN_COLLECTIBLES };
+  chickenFeasts = 0;
+  bestMultiplier = 1;
   result: MessRunResult | null = null;
 
+  private chickenCombo = 0;
+  private burgerSeconds = 0;
+  private feastSeconds = 0;
+  private boostScore = 0;
   private readonly rng: () => number;
   private nextObstacleId = 1;
   private nextPickupId = 1;
   private nextRowDistance = 11;
-  private nextPickupDistance = 20;
-  private nextPowerupDistance = 58;
+  private nextPickupDistance = 18;
+  private nextTokenDistance = 34;
   private hitCooldown = 0;
   private recoveryDelay = 0;
   private lastLaneChangeAt = -10;
@@ -148,6 +167,16 @@ export class MessRunSimulation {
     return 1 + this.foodLeft / 200;
   }
 
+  get scoreMultiplier(): number {
+    if (this.feastSeconds > 0) return MESS_RUN_FEAST_MULTIPLIER;
+    if (this.burgerSeconds > 0) return MESS_RUN_BURGER_MULTIPLIER;
+    return 1;
+  }
+
+  get multiplierSeconds(): number {
+    return Math.max(this.feastSeconds, this.burgerSeconds);
+  }
+
   get currentScore(): number {
     return computeMessRunScore({
       distance: this.distance,
@@ -155,6 +184,9 @@ export class MessRunSimulation {
       coins: this.coins,
       nearMisses: this.nearMisses,
       mode: this.mode.id,
+      collectibles: this.collectibles,
+      chickenFeasts: this.chickenFeasts,
+      boostScore: this.boostScore,
     });
   }
 
@@ -198,8 +230,14 @@ export class MessRunSimulation {
     this.distance += this.speed * step;
     this.hitCooldown = Math.max(0, this.hitCooldown - step);
     this.recoveryDelay = Math.max(0, this.recoveryDelay - step);
-    this.shieldSeconds = Math.max(0, this.shieldSeconds - step);
+    this.burgerSeconds = Math.max(0, this.burgerSeconds - step);
+    this.feastSeconds = Math.max(0, this.feastSeconds - step);
     this.plateStability = Math.min(100, this.plateStability + step * 1.15);
+    if (this.scoreMultiplier > 1) {
+      const extraDistancePoints =
+        this.speed * step * 2 * (this.scoreMultiplier - 1);
+      this.boostScore = Math.min(8_000, this.boostScore + extraDistancePoints);
+    }
     this.slideTimer = Math.max(0, this.slideTimer - step);
     this.playerX += (LANE_POSITIONS[this.lane] - this.playerX) * Math.min(1, step * 13);
 
@@ -255,12 +293,12 @@ export class MessRunSimulation {
         this.rng() * 3;
     }
     if (this.distance >= this.nextPickupDistance) {
-      this.spawnTokenLine();
-      this.nextPickupDistance = this.distance + 17 + this.rng() * 6;
+      this.spawnFoodTrail();
+      this.nextPickupDistance = this.distance + 13 + this.rng() * 5;
     }
-    if (this.distance >= this.nextPowerupDistance) {
-      this.spawnPowerup();
-      this.nextPowerupDistance = this.distance + 48 + this.rng() * 13;
+    if (this.distance >= this.nextTokenDistance) {
+      this.spawnTokenLine();
+      this.nextTokenDistance = this.distance + 38 + this.rng() * 16;
     }
 
     if (this.teacherGap <= CATCH_GAP) {
@@ -290,7 +328,11 @@ export class MessRunSimulation {
       speed: this.speed,
       teacherGap: this.teacherGap,
       plateStability: Math.round(this.plateStability),
-      shieldSeconds: Math.ceil(this.shieldSeconds),
+      collectibles: { ...this.collectibles },
+      chickenFeastProgress: this.chickenCombo,
+      chickenFeasts: this.chickenFeasts,
+      scoreMultiplier: this.scoreMultiplier,
+      multiplierSeconds: Math.ceil(this.multiplierSeconds),
       lane: this.lane,
       targetDistance: this.mode.targetDistance,
       mode: this.mode.id,
@@ -316,6 +358,9 @@ export class MessRunSimulation {
         coins: this.coins,
         nearMisses: this.nearMisses,
         mode: this.mode.id,
+        collectibles: this.collectibles,
+        chickenFeasts: this.chickenFeasts,
+        boostScore: this.boostScore,
       }),
       distance: Math.round(this.distance),
       durationMs: Math.round(this.elapsedSeconds * 1000),
@@ -325,6 +370,10 @@ export class MessRunSimulation {
       coins: this.coins,
       nearMisses: this.nearMisses,
       obstaclesAvoided: this.obstaclesAvoided,
+      collectibles: { ...this.collectibles },
+      chickenFeasts: this.chickenFeasts,
+      bestMultiplier: this.bestMultiplier,
+      boostScore: Math.round(this.boostScore),
     };
     this.events.push({ type: outcome });
     return this.result;
@@ -373,16 +422,12 @@ export class MessRunSimulation {
     this.recoveryDelay = 2.2;
     this.slideTimer = 0;
 
-    if (this.shieldSeconds > 0) {
-      this.shieldSeconds = 0;
-      this.plateStability = Math.min(100, this.plateStability + 12);
-      this.teacherGap = Math.min(7.4, this.teacherGap + 1.45);
-      this.events.push({ type: "shield", amount: 0 });
-      return;
-    }
-
     const primaryRight = this.rng() > 0.48;
-    const baseLoss = (12.5 + this.rng() * 4.5) * this.mode.foodLossMultiplier;
+    // Stable trays spill less. Cold drinks refill this meter, making them a
+    // real defensive pickup without turning collisions into free hits.
+    const spillScale = 1 - clamp(this.plateStability, 0, 100) * 0.003;
+    const baseLoss =
+      (12.5 + this.rng() * 4.5) * this.mode.foodLossMultiplier * spillScale;
     const leftLoss = baseLoss * (primaryRight ? 0.55 : 1.15);
     const rightLoss = baseLoss * (primaryRight ? 1.15 : 0.55);
     this.leftTray = Math.max(0, this.leftTray - leftLoss);
@@ -402,18 +447,51 @@ export class MessRunSimulation {
     if (pickup.kind === "token") {
       this.coins += 1;
       this.teacherGap = Math.min(7.2, this.teacherGap + 0.018);
-      this.events.push({ type: "token" });
+      this.awardMultiplierExtra(25);
+      this.events.push({ type: "collect", kind: "token", points: 25 });
       return;
     }
-    if (pickup.kind === "shield") {
-      this.shieldSeconds = 9;
-      this.events.push({ type: "shield", amount: 9 });
-      return;
+
+    const kind = pickup.kind;
+    this.collectibles[kind] += 1;
+    const points = MESS_RUN_FOOD_POINTS[kind];
+    this.awardMultiplierExtra(points);
+    let feastTriggered = false;
+
+    if (kind === "samosa") {
+      const restore = 6;
+      this.leftTray = Math.min(100, this.leftTray + restore);
+      this.rightTray = Math.min(100, this.rightTray + restore);
+    } else if (kind === "coldDrink") {
+      this.plateStability = Math.min(100, this.plateStability + 28);
+    } else if (kind === "burger") {
+      this.burgerSeconds = Math.max(this.burgerSeconds, MESS_RUN_BURGER_SECONDS);
+      this.bestMultiplier = Math.max(this.bestMultiplier, MESS_RUN_BURGER_MULTIPLIER);
+    } else if (kind === "chicken") {
+      this.chickenCombo += 1;
+      if (this.chickenCombo >= MESS_RUN_FEAST_SIZE) {
+        this.chickenCombo = 0;
+        this.chickenFeasts += 1;
+        this.feastSeconds = Math.max(this.feastSeconds, MESS_RUN_FEAST_SECONDS);
+        this.bestMultiplier = Math.max(this.bestMultiplier, MESS_RUN_FEAST_MULTIPLIER);
+        this.boostScore += MESS_RUN_FEAST_BONUS * (MESS_RUN_FEAST_MULTIPLIER - 1);
+        feastTriggered = true;
+      }
     }
-    const bonus = 8;
-    this.leftTray = Math.min(100, this.leftTray + bonus);
-    this.rightTray = Math.min(100, this.rightTray + bonus);
-    this.events.push({ type: "food-bonus", amount: bonus });
+
+    this.events.push({ type: "collect", kind, points });
+    if (feastTriggered) {
+      this.events.push({
+        type: "feast",
+        amount: MESS_RUN_FEAST_BONUS,
+        multiplier: MESS_RUN_FEAST_MULTIPLIER,
+      });
+    }
+  }
+
+  private awardMultiplierExtra(points: number): void {
+    if (this.scoreMultiplier <= 1) return;
+    this.boostScore = Math.min(8_000, this.boostScore + points * (this.scoreMultiplier - 1));
   }
 
   private spawnRow(): void {
@@ -442,36 +520,73 @@ export class MessRunSimulation {
     }
   }
 
-  private spawnTokenLine(): void {
-    const lane = Math.floor(this.rng() * 3);
-    if (!this.laneFreeNear(lane, -72, 4)) return;
-    for (let index = 0; index < 3; index += 1) {
+  private spawnFoodTrail(): void {
+    const roll = this.rng();
+    const kind: MessRunFoodKind =
+      roll < 0.3
+        ? "chicken"
+        : roll < 0.47
+          ? "fries"
+          : roll < 0.63
+            ? "samosa"
+            : roll < 0.79
+              ? "burger"
+              : "coldDrink";
+    const count = kind === "chicken" && this.rng() < 0.4 ? 2 : 1;
+    const placement = this.findSafeTrail(count, 7);
+    if (!placement) return;
+    for (let index = 0; index < count; index += 1) {
       this.pickups.push({
         id: this.nextPickupId++,
-        lane,
-        kind: "token",
-        z: -68 - index * 3.4,
+        lane: placement.lane,
+        kind,
+        z: placement.zStart - index * 3.2,
         collected: false,
       });
     }
   }
 
-  private spawnPowerup(): void {
-    const lane = Math.floor(this.rng() * 3);
-    if (!this.laneFreeNear(lane, -72, 7)) return;
-    this.pickups.push({
-      id: this.nextPickupId++,
-      lane,
-      kind: this.rng() < 0.58 ? "shield" : "food",
-      z: -71,
-      collected: false,
-    });
+  private spawnTokenLine(): void {
+    const placement = this.findSafeTrail(3, 6);
+    if (!placement) return;
+    for (let index = 0; index < 3; index += 1) {
+      this.pickups.push({
+        id: this.nextPickupId++,
+        lane: placement.lane,
+        kind: "token",
+        z: placement.zStart - index * 3.2,
+        collected: false,
+      });
+    }
   }
 
-  private laneFreeNear(lane: number, z: number, radius: number): boolean {
-    return !this.obstacles.some(
-      (obstacle) =>
-        obstacle.lane === lane && Math.abs(obstacle.z - z) < radius && !obstacle.resolved,
-    );
+  /** Pick a lane and distance band with a clear approach and no overlapping pickup. */
+  private findSafeTrail(count: number, clearance: number): { lane: number; zStart: number } | null {
+    const startLane = Math.floor(this.rng() * 3);
+    for (let offset = 0; offset < 3; offset += 1) {
+      const lane = (startLane + offset) % 3;
+      const zStart = -42 - this.rng() * 18;
+      let safe = true;
+      for (let index = 0; index < count; index += 1) {
+        const z = zStart - index * 3.2;
+        if (
+          this.obstacles.some(
+            (obstacle) =>
+              obstacle.lane === lane &&
+              !obstacle.resolved &&
+              Math.abs(obstacle.z - z) < clearance,
+          ) ||
+          this.pickups.some(
+            (pickup) =>
+              pickup.lane === lane && !pickup.collected && Math.abs(pickup.z - z) < 2.6,
+          )
+        ) {
+          safe = false;
+          break;
+        }
+      }
+      if (safe) return { lane, zStart };
+    }
+    return null;
   }
 }

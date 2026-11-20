@@ -61,6 +61,36 @@ export class MessRunAudio {
     this.tone(520, 0.045, "sine", 0.02);
   }
 
+  food(kind: "chicken" | "fries" | "samosa" | "burger" | "coldDrink"): void {
+    const recipes: Record<
+      typeof kind,
+      { notes: number[]; duration: number; type: OscillatorType }
+    > = {
+      chicken: { notes: [392, 523], duration: 0.1, type: "triangle" },
+      fries: { notes: [620, 780], duration: 0.075, type: "sine" },
+      samosa: { notes: [466, 622, 466], duration: 0.08, type: "triangle" },
+      burger: { notes: [294, 392, 494], duration: 0.1, type: "sine" },
+      coldDrink: { notes: [700, 1050, 1320], duration: 0.09, type: "sine" },
+    };
+    const recipe = recipes[kind];
+    recipe.notes.forEach((frequency, index) => {
+      window.setTimeout(
+        () => this.tone(frequency, recipe.duration, recipe.type, 0.035),
+        index * 45,
+      );
+    });
+  }
+
+  feast(): void {
+    [392, 523, 659, 784, 1046].forEach((frequency, index) => {
+      window.setTimeout(
+        () => this.tone(frequency, 0.18, index % 2 ? "sine" : "triangle", 0.045),
+        index * 70,
+      );
+    });
+    window.setTimeout(() => this.noise(0.22, 0.035, 1200), 180);
+  }
+
   hit(): void {
     this.tone(92, 0.22, "sawtooth", 0.09, -10);
     this.noise(0.16, 0.07, 220);

@@ -82,6 +82,55 @@ export const MESS_RUN_MODES: readonly MessRunMode[] = [
 
 export const DEFAULT_MESS_RUN_MODE: MessRunModeId = "classic";
 
+export type MessRunFoodKind = "chicken" | "fries" | "samosa" | "burger" | "coldDrink";
+
+export interface MessRunCollectibles {
+  chicken: number;
+  fries: number;
+  samosa: number;
+  burger: number;
+  coldDrink: number;
+}
+
+export const EMPTY_MESS_RUN_COLLECTIBLES: MessRunCollectibles = {
+  chicken: 0,
+  fries: 0,
+  samosa: 0,
+  burger: 0,
+  coldDrink: 0,
+};
+
+/** Base points awarded by each distinct collectible. */
+export const MESS_RUN_FOOD_POINTS: Record<MessRunFoodKind, number> = {
+  chicken: 80,
+  fries: 45,
+  samosa: 25,
+  burger: 35,
+  coldDrink: 30,
+};
+
+export const MESS_RUN_FEAST_SIZE = 5;
+export const MESS_RUN_FEAST_BONUS = 400;
+export const MESS_RUN_BURGER_MULTIPLIER = 1.5;
+export const MESS_RUN_BURGER_SECONDS = 12;
+export const MESS_RUN_FEAST_MULTIPLIER = 1.75;
+export const MESS_RUN_FEAST_SECONDS = 10;
+
+export function collectibleBonusScore(
+  collectibles: Partial<MessRunCollectibles> | null | undefined,
+  chickenFeasts = 0,
+): number {
+  const safe = collectibles ?? EMPTY_MESS_RUN_COLLECTIBLES;
+  return (
+    Math.max(0, Math.floor(safe.chicken ?? 0)) * MESS_RUN_FOOD_POINTS.chicken +
+    Math.max(0, Math.floor(safe.fries ?? 0)) * MESS_RUN_FOOD_POINTS.fries +
+    Math.max(0, Math.floor(safe.samosa ?? 0)) * MESS_RUN_FOOD_POINTS.samosa +
+    Math.max(0, Math.floor(safe.burger ?? 0)) * MESS_RUN_FOOD_POINTS.burger +
+    Math.max(0, Math.floor(safe.coldDrink ?? 0)) * MESS_RUN_FOOD_POINTS.coldDrink +
+    Math.max(0, Math.floor(chickenFeasts)) * MESS_RUN_FEAST_BONUS
+  );
+}
+
 export function messRunMode(id: MessRunModeId): MessRunMode {
   return MESS_RUN_MODES.find((mode) => mode.id === id) ?? MESS_RUN_MODES[0];
 }
@@ -273,6 +322,10 @@ export interface MessRunResult {
   coins: number;
   nearMisses: number;
   obstaclesAvoided: number;
+  collectibles: MessRunCollectibles;
+  chickenFeasts: number;
+  bestMultiplier: number;
+  boostScore: number;
 }
 
 export interface MessRunStoredRun {
@@ -370,14 +423,20 @@ export function computeMessRunScore(input: {
   coins: number;
   nearMisses: number;
   mode: MessRunModeId;
+  collectibles?: Partial<MessRunCollectibles> | null;
+  chickenFeasts?: number;
+  boostScore?: number;
 }): number {
   const mode = messRunMode(input.mode);
   const distance = Math.max(0, input.distance);
   const food = Math.max(0, Math.min(100, input.foodLeft));
   const coins = Math.max(0, Math.min(100_000, Math.floor(input.coins)));
   const nearMisses = Math.max(0, Math.min(100_000, Math.floor(input.nearMisses)));
+  const collectibleBonus = collectibleBonusScore(input.collectibles, input.chickenFeasts ?? 0);
+  const boostScore = Math.max(0, Math.min(50_000, Math.floor(input.boostScore ?? 0)));
   return Math.floor(
-    (distance * 2 + food * 12 + coins * 25 + nearMisses * 15) * mode.scoreMultiplier,
+    (distance * 2 + food * 12 + coins * 25 + nearMisses * 15 + collectibleBonus + boostScore) *
+      mode.scoreMultiplier,
   );
 }
 
