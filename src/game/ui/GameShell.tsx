@@ -31,6 +31,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router";
 import { GameEngine } from "../core/GameEngine";
 import { GameStore, useGameState } from "../core/GameStore";
 import { SaveSystem } from "../core/SaveSystem";
@@ -77,6 +78,8 @@ export function GameShell({
   const containerRef = useRef<HTMLDivElement>(null);
   const onEngineReadyRef = useRef(onEngineReady);
   onEngineReadyRef.current = onEngineReady;
+  const [searchParams] = useSearchParams();
+  const handledEntryIntent = useRef(false);
   const [store] = useState(() => {
     const save = new SaveSystem().load();
     const touch = detectTouch();
@@ -110,6 +113,24 @@ export function GameShell({
   }, [store]);
 
   const ready = state.load.status === "ready";
+
+  // The landing page can ask the existing menu to resume a save or open the
+  // existing campus tour. No second entry flow is created here.
+  useEffect(() => {
+    if (handledEntryIntent.current || !ready || multiplayer || !engine) return;
+    const intent = searchParams.get("intent");
+    if (intent !== "continue" && intent !== "tour") return;
+    if (!state.hasSave || state.screen !== "menu") return;
+    handledEntryIntent.current = true;
+    if (!engine.continueGame()) return;
+    if (intent === "tour") {
+      window.setTimeout(() => {
+        engine.openPlan();
+        engine.choosePlan("explore");
+      }, 0);
+    }
+  }, [engine, multiplayer, ready, searchParams, state.hasSave, state.screen]);
+
   const inGame =
     state.screen === "creation" ||
     state.screen === "playing" ||
