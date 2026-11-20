@@ -55,6 +55,36 @@ check(world.doors.some((door) => door.label === "classroom"), "academic main doo
 check(world.doors.some((door) => door.label === "block-b"), "Block B door exists");
 check(world.doors.some((door) => door.label === "indoor-sports"), "indoor sports door exists");
 
+// Every house has one distinct, reachable shared food cupboard in its hostel.
+for (const houseId of ["aravali", "nilgiri", "shivalik", "udaygiri"] as const) {
+  const info = world.houseHostels[houseId];
+  const cupboard = world.houseCupboards[houseId];
+  const interactable = world.interactables.find(
+    (item) => item.kind === "cupboard" && item.houseId === houseId,
+  );
+  check(Boolean(info), `${houseId} hostel registered`);
+  check(Boolean(cupboard), `${houseId} cupboard geometry built`);
+  check(Boolean(interactable), `${houseId} cupboard is interactable`);
+  if (info && interactable) {
+    const insideZone =
+      interactable.position.x > info.zone.minX &&
+      interactable.position.x < info.zone.maxX &&
+      interactable.position.z > info.zone.minZ &&
+      interactable.position.z < info.zone.maxZ;
+    check(insideZone, `${houseId} cupboard stands inside the hostel common area`);
+    check(
+      !collidesAt(interactable.position.x, interactable.position.z, world.colliders, 0),
+      `${houseId} cupboard approach is walkable`,
+    );
+  }
+  if (cupboard) {
+    world.setCupboardOpen(houseId, true);
+    check(cupboard.target === 1, `${houseId} cupboard doors open`);
+    world.setCupboardOpen(houseId, false);
+    check(cupboard.target === 0, `${houseId} cupboard doors close`);
+  }
+}
+
 const starts: Point[] = [
   { x: -12, z: 0, label: "academic portico" },
   { x: 23, z: -20.2, label: "Block B entrance" },

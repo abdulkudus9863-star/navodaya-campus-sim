@@ -88,10 +88,45 @@ const schema = defineSchema(
       coldDrink: v.optional(v.number()),
       chickenFeasts: v.optional(v.number()),
       boostScore: v.optional(v.number()),
+      // Written once when this run's collected food is deposited into the
+      // player's house cupboard. It is the atomic duplicate-deposit guard.
+      pantryDepositedAt: v.optional(v.number()),
+      pantryHouseId: v.optional(v.string()),
       createdAt: v.number(),
     })
       .index("by_user", ["userId"])
       .index("by_user_score", ["userId", "score"])
+      .index("by_user_created", ["userId", "createdAt"]),
+
+    // ---------------------------------------------------------- house pantry
+
+    /** One shared food inventory per house. House comes from playerIdentities. */
+    houseFoodCupboards: defineTable({
+      houseId: v.string(),
+      chicken: v.number(),
+      fries: v.number(),
+      samosa: v.number(),
+      burger: v.number(),
+      coldDrink: v.number(),
+      totalDeposited: v.number(),
+      totalConsumed: v.number(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    }).index("by_house", ["houseId"]),
+
+    /** Append-only shared history so every house member sees deposits/eating. */
+    houseFoodTransactions: defineTable({
+      houseId: v.string(),
+      userId: v.id("users"),
+      playerId: v.string(),
+      playerName: v.string(),
+      action: v.union(v.literal("deposit"), v.literal("consume")),
+      item: v.string(),
+      quantity: v.number(),
+      sourceRunId: v.optional(v.id("messRunRuns")),
+      createdAt: v.number(),
+    })
+      .index("by_house_created", ["houseId", "createdAt"])
       .index("by_user_created", ["userId", "createdAt"]),
 
     // ---------------------------------------------------------------- multiplayer

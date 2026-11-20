@@ -423,6 +423,7 @@ export interface GameUIState {
   exploration: ExplorationView | null;
   planOpen: boolean;
   campusMapOpen: boolean;
+  cupboardOpen: boolean;
   cameraOverview: boolean;
   campusMap: CampusMapView | null;
   crouching: boolean;

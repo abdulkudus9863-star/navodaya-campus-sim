@@ -69,7 +69,7 @@ export interface FloorRamp {
 
 export interface WorldInteractable {
   id: string;
-  kind: "npc" | "principal" | "notice" | "door" | "student" | "teacher" | "roommate" | "garden" | "book" | "meal";
+  kind: "npc" | "principal" | "notice" | "door" | "student" | "teacher" | "roommate" | "garden" | "book" | "meal" | "cupboard";
   label: string;
   position: THREE.Vector3;
   radius: number;
@@ -80,6 +80,7 @@ export interface WorldInteractable {
   verb?: string;
   notice?: NoticeView;
   roomId?: string;
+  houseId?: HouseId;
 }
 
 export interface WorldZone {
@@ -123,6 +124,13 @@ interface NightPatrol {
   nextIndex: number;
   facing: number;
   speed: number;
+}
+
+interface HouseCupboardVisual {
+  amount: number;
+  target: number;
+  leftDoor: THREE.Group;
+  rightDoor: THREE.Group;
 }
 
 export class Door {
@@ -204,6 +212,7 @@ export class WorldEnvironment {
   readonly npcPosition = new THREE.Vector3(4.2, 0, 33.4);
   readonly bounds = 54;
   readonly houseHostels: Record<HouseId, HouseHostelInfo> = {} as Record<HouseId, HouseHostelInfo>;
+  readonly houseCupboards: Record<HouseId, HouseCupboardVisual> = {} as Record<HouseId, HouseCupboardVisual>;
   readonly gardenCenter = new THREE.Vector3(-38, 0, 26);
   readonly gardenRadius = 7.4;
   readonly hideZones: WorldZone[] = [];
@@ -1837,6 +1846,19 @@ export class WorldEnvironment {
       this.builder.add("lampGlow", new THREE.SphereGeometry(0.16, 10, 8), cx, 2.55, 38, {});
       this.builder.plane(`houseFlag-${houseId}`, 2.6, 1.0, cx, 2.3, back - 0.35, { rotY: Math.PI });
 
+      // The house food cupboard lives in the common area, against the east
+      // wall. Its doors, shelves and food are real geometry so every player
+      // sees the same physical cupboard in the hostel.
+      this.buildHouseCupboard(houseId, cx, house.color, house.shortName);
+      this.interactables.push({
+        id: `house-cupboard-${houseId}`,
+        kind: "cupboard",
+        label: `${house.shortName} food cupboard`,
+        position: new THREE.Vector3(cx + 2.02, 0, 37.15),
+        radius: 2.15,
+        houseId,
+      });
+
       const light = new THREE.PointLight(0xffd3a0, 5.5, 9, 2);
       light.position.set(cx, 2.6, 38);
       light.visible = false;
@@ -1946,6 +1968,128 @@ export class WorldEnvironment {
       active: false,
     };
     this.interactables.push(this.roommateInteractable);
+  }
+
+  private buildHouseCupboard(
+    houseId: HouseId,
+    cx: number,
+    color: string,
+    shortName: string,
+  ): void {
+    const z = 37.15;
+    const x = cx + 2.8;
+
+    // Shell: back, sides, base, crown and four open shelves.
+    this.builder.box("woodDark", { w: 0.24, h: 1.84, d: 1.32 }, cx + 2.97, 1.08, z, {});
+    for (const side of [-1, 1]) {
+      this.builder.box("woodDark", { w: 0.42, h: 1.9, d: 0.07 }, x, 1.08, z + side * 0.7, {});
+      this.builder.box("woodDark", { w: 0.12, h: 0.14, d: 0.12 }, x, 0.08, z + side * 0.58, {});
+    }
+    this.builder.box("woodDark", { w: 0.46, h: 0.08, d: 1.48 }, x, 0.2, z, {});
+    this.builder.box("woodDark", { w: 0.46, h: 0.09, d: 1.48 }, x, 2.06, z, {});
+    for (const shelfY of [0.58, 0.94, 1.3, 1.66]) {
+      this.builder.box("woodLight", { w: 0.36, h: 0.045, d: 1.24 }, x - 0.02, shelfY, z, {});
+    }
+    // Crown and house-colour band.
+    this.builder.box("woodLight", { w: 0.54, h: 0.1, d: 1.56 }, x, 2.15, z, {});
+    const accent = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.08 });
+    this.disposables.push(accent);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 1.42), accent);
+    band.position.set(x - 0.01, 2.09, z);
+    band.castShadow = true;
+    this.group.add(band);
+
+    // Plaque with the house name. The texture is the existing name-tag art.
+    const plaqueTexture = nameTagTexture(`${shortName} cupboard`, "HOUSE FOOD SHARE");
+    this.disposables.push(plaqueTexture);
+    const plaqueMaterial = new THREE.MeshBasicMaterial({ map: plaqueTexture, transparent: true });
+    this.disposables.push(plaqueMaterial);
+    const plaque = new THREE.Mesh(new THREE.PlaneGeometry(1.18, 0.36), plaqueMaterial);
+    plaque.position.set(cx + 2.56, 2.38, z);
+    plaque.rotation.y = -Math.PI / 2;
+    this.group.add(plaque);
+
+    // Two hinged doors. Each leaf hangs from the outer edge so it swings clear.
+    const leftDoor = new THREE.Group();
+    leftDoor.position.set(cx + 2.57, 1.28, z - 0.7);
+    const rightDoor = new THREE.Group();
+    rightDoor.position.set(cx + 2.57, 1.28, z + 0.7);
+    for (const [door, direction] of [[leftDoor, 1], [rightDoor, -1]] as const) {
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.72, 0.68), this.materials.woodLight);
+      leaf.position.z = direction * 0.345;
+      leaf.castShadow = true;
+      leaf.receiveShadow = true;
+      door.add(leaf);
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(0.026, 1.24, 0.46),
+        this.materials.woodDark,
+      );
+      panel.position.set(-0.035, 0, direction * 0.345);
+      door.add(panel);
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), this.materials.brass);
+      knob.position.set(-0.07, 0, direction * 0.61);
+      door.add(knob);
+      this.group.add(door);
+    }
+
+    // Stylised food models on the shelves. Quantities live in the shared
+    // inventory UI; these are the physical shelf contents.
+    const foodMaterials = {
+      chicken: new THREE.MeshStandardMaterial({ color: 0xb66a32, roughness: 0.72 }),
+      fry: new THREE.MeshStandardMaterial({ color: 0xe8b449, roughness: 0.68 }),
+      carton: new THREE.MeshStandardMaterial({ color: 0xa53b2c, roughness: 0.8 }),
+      samosa: new THREE.MeshStandardMaterial({ color: 0xd3a25e, roughness: 0.78 }),
+      bun: new THREE.MeshStandardMaterial({ color: 0xc38a4a, roughness: 0.75 }),
+      patty: new THREE.MeshStandardMaterial({ color: 0x5e3a24, roughness: 0.85 }),
+      can: new THREE.MeshStandardMaterial({ color: 0x9ec7d6, roughness: 0.35, metalness: 0.45 }),
+    };
+    this.disposables.push(...Object.values(foodMaterials));
+    const at = (mesh: THREE.Mesh, lx: number, ly: number, lz: number, rx = 0) => {
+      mesh.position.set(cx + lx, ly, z + lz);
+      mesh.rotation.x = rx;
+      mesh.castShadow = true;
+      this.group.add(mesh);
+    };
+    // Chicken pieces, shelf one.
+    for (const [lz, ly] of [[-0.36, 0.68], [0.34, 0.68]] as const) {
+      const meat = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), foodMaterials.chicken);
+      meat.scale.set(1.32, 0.72, 0.9);
+      at(meat, 2.78, ly, lz, 0.1);
+      const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.13, 6), this.materials.whitePaint);
+      bone.rotation.z = Math.PI / 2;
+      at(bone, 2.68, ly + 0.02, lz + 0.08, 0);
+    }
+    // Fries carton, shelf two.
+    const carton = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.18, 0.21), foodMaterials.carton);
+    at(carton, 2.8, 1.06, -0.45, 0.08);
+    for (let i = 0; i < 4; i += 1) {
+      const fry = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.03, 0.025), foodMaterials.fry);
+      at(fry, 2.74 + i * 0.025, 1.18 + i * 0.014, -0.52 + i * 0.045, 0.18);
+    }
+    // Samosas, shelf two.
+    for (const lz of [0.02, 0.28]) {
+      const samosa = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.13, 4), foodMaterials.samosa);
+      at(samosa, 2.78, 1.05, lz, 0.12);
+    }
+    // Burger, shelf three.
+    const burgerY = 1.41;
+    const bunBottom = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.1, 0.05, 14), foodMaterials.bun);
+    at(bunBottom, 2.78, burgerY, 0.24, 0);
+    const patty = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.045, 14), foodMaterials.patty);
+    at(patty, 2.78, burgerY + 0.045, 0.24, 0);
+    const bunTop = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), foodMaterials.bun);
+    bunTop.scale.y = 0.5;
+    at(bunTop, 2.78, burgerY + 0.07, 0.24, 0);
+    // Cold drinks, shelf three.
+    for (const lz of [-0.38, -0.16]) {
+      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.18, 12), foodMaterials.can);
+      at(can, 2.8, 1.42, lz, 0);
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.057, 0.057, 0.035, 12), accent);
+      at(ring, 2.8, 1.43, lz, 0);
+    }
+
+    this.collider(cx + 2.55, cx + 3.04, z - 0.74, z + 0.74, `house-cupboard-${houseId}`);
+    this.houseCupboards[houseId] = { amount: 0, target: 0, leftDoor, rightDoor };
   }
 
   private addHouseNpc(
@@ -3768,6 +3912,15 @@ export class WorldEnvironment {
     if (this.night) this.showRoommate(houseId);
   }
 
+  setCupboardOpen(houseId: HouseId, open: boolean): void {
+    const cupboard = this.houseCupboards[houseId];
+    if (cupboard) cupboard.target = open ? 1 : 0;
+  }
+
+  closeAllCupboards(): void {
+    for (const cupboard of Object.values(this.houseCupboards)) cupboard.target = 0;
+  }
+
   setNight(night: boolean): void {
     this.night = night;
     this.nightGroup.visible = night;
@@ -4042,6 +4195,13 @@ export class WorldEnvironment {
       this.sun.target.updateMatrixWorld();
     }
     for (const door of this.doors) door.update(dt);
+    for (const cupboard of Object.values(this.houseCupboards)) {
+      const step = Math.sign(cupboard.target - cupboard.amount) * dt * 2.7;
+      cupboard.amount += Math.sign(step) * Math.min(Math.abs(step), Math.abs(cupboard.target - cupboard.amount));
+      const eased = cupboard.amount * cupboard.amount * (3 - 2 * cupboard.amount);
+      cupboard.leftDoor.rotation.y = -eased * 1.62;
+      cupboard.rightDoor.rotation.y = eased * 1.62;
+    }
 
     if (this.flag && this.flagBase) {
       this.flagTime += dt;

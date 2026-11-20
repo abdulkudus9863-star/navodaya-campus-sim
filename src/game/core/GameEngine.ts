@@ -3007,6 +3007,15 @@ export class GameEngine {
       this.openNotice(target.notice ?? NOTICE_CONTENT, target.id === "notice-board");
       return;
     }
+    if (target.kind === "cupboard") {
+      const houseId = target.houseId;
+      if (!houseId || this.profile?.houseId !== houseId) {
+        this.showToast("That cupboard belongs to another house. Your own is in your hostel.");
+        return;
+      }
+      this.openCupboard(houseId);
+      return;
+    }
     if (target.kind === "door" && target.door) {
       if (target.door.isOpen) {
         const distance = Math.hypot(
@@ -3023,6 +3032,27 @@ export class GameEngine {
       this.store.setPrompt(this.interaction.promptFor(target));
       return;
     }
+  }
+
+  openCupboard(houseId: HouseId): void {
+    this.world.closeAllCupboards();
+    this.world.setCupboardOpen(houseId, true);
+    this.store.patch({ cupboardOpen: true, prompt: null });
+    this.audio.door();
+  }
+
+  closeCupboard(): void {
+    // Drain any E press made while reading the shelves so closing cannot
+    // immediately trigger another interaction.
+    this.input.consumeInteract();
+    this.world.closeAllCupboards();
+    this.store.patch({ cupboardOpen: false });
+    this.audio.uiClick();
+  }
+
+  /** Called by the pantry panel so the on-campus player takes a visible bite. */
+  playCupboardEat(): void {
+    this.player.playEat();
   }
 
   advanceDialogue(): void {
@@ -3792,6 +3822,16 @@ export class GameEngine {
       if (event.code === "Escape") this.closeAdventure();
       return;
     }
+    if (state.cupboardOpen) {
+      // E is deliberately not a close key here: InputController also queues it
+      // for interaction, which would immediately re-open the cupboard on the
+      // next simulated frame.
+      if (event.code === "Escape") {
+        event.preventDefault();
+        this.closeCupboard();
+      }
+      return;
+    }
     if (event.code === "Escape") {
       if (state.cameraOverview) {
         this.exitCameraOverview();
@@ -3871,7 +3911,8 @@ export class GameEngine {
       state.screen === "playing" &&
       !state.settingsOpen &&
       !state.profileOpen &&
-      !state.cameraOverview;
+      !state.cameraOverview &&
+      !state.cupboardOpen;
 
     this.audio.update(dt);
 
@@ -3990,6 +4031,11 @@ export class GameEngine {
 
       const seconds = Math.floor(this.playtime);
       if (seconds !== state.playtime) this.store.patch({ playtime: seconds });
+    } else if (state.cupboardOpen) {
+      this.input.consumeInteract();
+      this.player.tickGesture(dt);
+      this.teachers?.setEnabled(false);
+      this.store.setPrompt(null);
     } else if (state.screen === "dialogue") {
       this.cameraController.updateDialogue(dt, this.player.position, this.dialogueAnchor);
       if (this.dialogueSource === "teacher" && this.teachers && !this.multiplayer && !this.nightMode) {

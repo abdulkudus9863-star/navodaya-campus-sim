@@ -1,4 +1,5 @@
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { useAuth } from "@/hooks/use-auth";
 import { usePlayerIdentity } from "@/identity/PlayerIdentityProvider";
 import { DEFAULT_CHARACTER, type TeacherDialogueMeta } from "@/game/core/types";
@@ -506,6 +507,13 @@ function ResultsOverlay({
   saveError,
   onRetry,
   onChangeTeacher,
+  isAuthenticated,
+  houseName,
+  runSaved,
+  depositBusy,
+  depositError,
+  deposited,
+  onDeposit,
 }: {
   result: MessRunResult;
   teacher: MessRunTeacher;
@@ -515,9 +523,17 @@ function ResultsOverlay({
   saveError: string | null;
   onRetry: () => void;
   onChangeTeacher: () => void;
+  isAuthenticated: boolean;
+  houseName: string;
+  runSaved: boolean;
+  depositBusy: boolean;
+  depositError: string | null;
+  deposited: { total: number; items: MessRunCollectibles } | null;
+  onDeposit: () => void;
 }) {
   const caught = result.outcome === "caught";
   const delivered = result.outcome === "delivered";
+  const collectedTotal = Object.values(result.collectibles).reduce((sum, value) => sum + value, 0);
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -597,6 +613,77 @@ function ResultsOverlay({
           />
         </div>
 
+        <div className="border-b border-[#f1ead8]/10 px-5 py-3.5 sm:px-7">
+          <p className="font-ui text-[7px] uppercase tracking-[0.18em] text-[#d7b46a]/65">
+            House cupboard
+          </p>
+          {!isAuthenticated ? (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="font-ui text-[9px] leading-relaxed text-[#e9ddc8]/45">
+                Sign in before your next run to share collected food with {houseName}.
+              </p>
+              <Link
+                to="/auth"
+                className="font-ui text-[8px] uppercase tracking-[0.16em] text-[#d7b46a] underline decoration-[#d7b46a]/40 underline-offset-4 hover:text-[#efd79f]"
+              >
+                Sign in
+              </Link>
+            </div>
+          ) : deposited ? (
+            <motion.div
+              initial={{ opacity: 0, y: 6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+              className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5"
+            >
+              <motion.span
+                initial={{ scale: 0.7 }}
+                animate={{ scale: [0.7, 1.12, 1] }}
+                transition={{ duration: 0.45 }}
+                className="inline-flex items-center gap-1.5 border border-[#9fc4a6]/40 bg-[#163123]/45 px-2 py-1 font-ui text-[8px] uppercase tracking-[0.13em] text-[#bcd9c2]"
+              >
+                <Check className="size-3" /> {deposited.total} items into {houseName}
+              </motion.span>
+              <span className="font-ui text-[8px] uppercase tracking-[0.12em] text-[#e9ddc8]/35">
+                Score and tokens stay yours. The food is now shared.
+              </span>
+            </motion.div>
+          ) : (
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2.5">
+              <div className="min-w-0">
+                <p className="font-ui text-[9px] leading-relaxed text-[#e9ddc8]/45">
+                  Share this run&apos;s collected food with every {houseName} member.
+                  Each saved run can be deposited once.
+                </p>
+                {depositError && (
+                  <p className="mt-1 inline-flex items-center gap-1 font-ui text-[8px] text-[#d99b84]">
+                    <AlertTriangle className="size-3" /> {depositError}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={onDeposit}
+                disabled={!runSaved || depositBusy || collectedTotal <= 0}
+                className="inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 border border-[#d7b46a]/70 bg-[#d7b46a]/12 px-3 py-1.5 font-ui text-[8px] font-semibold uppercase tracking-[0.16em] text-[#f0dfb7] transition hover:bg-[#d7b46a] hover:text-[#0b1511] disabled:cursor-wait disabled:opacity-45"
+              >
+                {depositBusy ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Utensils className="size-3" />
+                )}
+                {collectedTotal <= 0
+                  ? "No food collected"
+                  : runSaved
+                    ? `Deposit in ${houseName}`
+                    : submitting
+                      ? "Saving run"
+                      : "Run not saved"}
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#f1ead8]/10 px-5 py-3 sm:px-7">
           <p className="font-ui text-[9px] uppercase tracking-[0.14em] text-[#e9ddc8]/40">
             Personal best · <span className="text-[#d7b46a]">{formatMessRunScore(bestScore)}</span>
@@ -651,6 +738,7 @@ export default function MessRun() {
   const { identity, local } = usePlayerIdentity();
   const { isAuthenticated } = useAuth();
   const submitRun = useMutation(api.messRun.submitRun);
+  const depositRun = useMutation(api.houseCupboard.depositRun);
   const serverSummary = useQuery(api.messRun.mySummary, isAuthenticated ? {} : "skip");
   const audioDefaults = readAudioSettings();
   const [sfx, setSfx] = useState(audioDefaults.sfx);
@@ -667,6 +755,10 @@ export default function MessRun() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [serverBest, setServerBest] = useState(0);
+  const [savedRunId, setSavedRunId] = useState<Id<"messRunRuns"> | null>(null);
+  const [depositBusy, setDepositBusy] = useState(false);
+  const [depositError, setDepositError] = useState<string | null>(null);
+  const [deposited, setDeposited] = useState<{ total: number; items: MessRunCollectibles } | null>(null);
   const [localStats, setLocalStats] = useState<MessRunLocalStats>(() => readMessRunStats());
   const canvasRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<MessRunEngine | null>(null);
@@ -735,6 +827,9 @@ export default function MessRun() {
   const handleResult = useCallback((next: MessRunResult) => {
     setResult(next);
     setPaused(true);
+    setSavedRunId(null);
+    setDeposited(null);
+    setDepositError(null);
     setLocalStats(recordMessRunResult(next));
   }, []);
 
@@ -806,6 +901,7 @@ export default function MessRun() {
     })
       .then((saved) => {
         setServerBest(saved.bestScore);
+        setSavedRunId(saved.runId);
       })
       .catch(() => {
         setSaveError("Saved on this device. Sign in or retry later to sync.");
@@ -819,6 +915,9 @@ export default function MessRun() {
     setEventMessage(null);
     setHud(null);
     setPaused(false);
+    setSavedRunId(null);
+    setDeposited(null);
+    setDepositError(null);
     setRunToken((token) => token + 1);
     setScreen("run");
   };
@@ -828,7 +927,29 @@ export default function MessRun() {
     setSaveError(null);
     setEventMessage(null);
     setPaused(false);
+    setSavedRunId(null);
+    setDeposited(null);
+    setDepositError(null);
     setRunToken((token) => token + 1);
+  };
+
+  const depositFood = async () => {
+    if (!savedRunId || depositBusy) return;
+    setDepositBusy(true);
+    setDepositError(null);
+    try {
+      const saved = await depositRun({ runId: savedRunId });
+      setDeposited({ total: saved.total, items: saved.deposited });
+      setSavedRunId(null);
+    } catch (cause) {
+      setDepositError(
+        cause instanceof Error
+          ? cause.message.replace(/^.*Uncaught ConvexError:\s*/i, "")
+          : "The deposit could not be completed. Try again.",
+      );
+    } finally {
+      setDepositBusy(false);
+    }
   };
 
   const togglePause = () => {
@@ -927,6 +1048,13 @@ export default function MessRun() {
             saveError={saveError}
             onRetry={retry}
             onChangeTeacher={backToMenu}
+            isAuthenticated={isAuthenticated}
+            houseName={house?.name ?? "your house"}
+            runSaved={Boolean(savedRunId)}
+            depositBusy={depositBusy}
+            depositError={depositError}
+            deposited={deposited}
+            onDeposit={() => void depositFood()}
           />
         )}
       </main>

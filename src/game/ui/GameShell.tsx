@@ -43,6 +43,7 @@ import { CampusEscape } from "./CampusEscape";
 import { CampusMap } from "./CampusMap";
 import { CampusPlan } from "./CampusPlan";
 import { CharacterCreation } from "./CharacterCreation";
+import { HouseCupboardPanel } from "./HouseCupboardPanel";
 import { HouseEmblem } from "./HouseVisuals";
 import { usePlayerIdentity } from "@/identity/PlayerIdentityProvider";
 import { InteractionMenu } from "./InteractionMenu";
@@ -238,6 +239,14 @@ export function GameShell({
 
       {ready && state.notice && state.screen === "notice" && (
         <NoticeOverlay state={state} engine={engine} />
+      )}
+
+      {ready && state.cupboardOpen && (
+        <HouseCupboardPanel
+          engine={engine}
+          houseId={state.profile?.houseId ?? null}
+          onClose={() => engine?.closeCupboard()}
+        />
       )}
 
       {ready && state.screen === "ending" && state.ending && (

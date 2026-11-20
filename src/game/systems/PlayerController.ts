@@ -57,6 +57,7 @@ export class PlayerController {
   private stepTimer = 0;
   private landingImpact = 0;
   private interactPulse = 0;
+  private eatPulse = 0;
 
   constructor(character: CharacterSettings, houseColor?: string) {
     this.character = character;
@@ -93,6 +94,18 @@ export class PlayerController {
   /** Brief reach gesture used for doors, pickups and interaction prompts. */
   playInteract(): void {
     this.interactPulse = 1;
+  }
+
+  /** Hand-to-mouth gesture used when eating from the house cupboard. */
+  playEat(): void {
+    this.eatPulse = 1;
+    this.currentSpeed = 0;
+    this.moving = false;
+  }
+
+  /** Advances the eat/reach gesture while the cupboard panel pauses movement. */
+  tickGesture(dt: number): void {
+    this.animate(dt);
   }
 
   placeAt(position: THREE.Vector3, rotationY: number): void {
@@ -213,6 +226,7 @@ export class PlayerController {
     const rig = this.rig;
     this.landingImpact = Math.max(0, this.landingImpact - dt * 3.8);
     this.interactPulse = Math.max(0, this.interactPulse - dt * 2.4);
+    this.eatPulse = Math.max(0, this.eatPulse - dt * 0.9);
     const intensity = Math.min(1, this.currentSpeed / RUN_SPEED);
     const land = this.landingImpact;
     const stride = this.currentSpeed > 0.12 ? this.currentSpeed : 0;
@@ -266,6 +280,18 @@ export class PlayerController {
       rig.rightArm.rotation.z = damp(rig.rightArm.rotation.z, -0.18 * reach, 18, dt);
     } else {
       rig.rightArm.rotation.z = damp(rig.rightArm.rotation.z, 0, 10, dt);
+    }
+
+    if (this.eatPulse > 0) {
+      const progress = 1 - this.eatPulse;
+      const lift = Math.min(1, progress * 3.2);
+      const chew = Math.sin(progress * Math.PI * 8) * 0.09;
+      rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, -1.62 * lift + chew, 18, dt);
+      rig.rightArm.rotation.z = damp(rig.rightArm.rotation.z, -0.42 * lift, 18, dt);
+      rig.head.rotation.x = damp(rig.head.rotation.x, 0.1 + chew * 0.45, 14, dt);
+      rig.head.rotation.z = damp(rig.head.rotation.z, Math.sin(progress * Math.PI * 4) * 0.035, 12, dt);
+    } else {
+      rig.head.rotation.x = damp(rig.head.rotation.x, 0, 8, dt);
     }
 
     const lean = this.grounded
