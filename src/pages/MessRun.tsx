@@ -59,7 +59,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 
 const AUDIO_KEY = "navodaya.messrun.audio.v1";
 
@@ -514,6 +514,8 @@ function ResultsOverlay({
   depositError,
   deposited,
   onDeposit,
+  backHref,
+  backLabel,
 }: {
   result: MessRunResult;
   teacher: MessRunTeacher;
@@ -530,6 +532,8 @@ function ResultsOverlay({
   depositError: string | null;
   deposited: { total: number; items: MessRunCollectibles } | null;
   onDeposit: () => void;
+  backHref: string;
+  backLabel: string;
 }) {
   const caught = result.outcome === "caught";
   const delivered = result.outcome === "delivered";
@@ -723,10 +727,10 @@ function ResultsOverlay({
             <Target className="size-3.5" /> Change teacher
           </button>
           <Link
-            to="/play?intent=continue"
+            to={backHref}
             className="flex min-h-12 items-center justify-center gap-2 border border-[#f1ead8]/22 px-4 py-3 font-ui text-[10px] uppercase tracking-[0.2em] text-[#f1ead8]/78 transition hover:border-[#d7b46a]/65 hover:text-[#d7b46a]"
           >
-            <ArrowLeft className="size-3.5" /> Campus
+            <ArrowLeft className="size-3.5" /> {backLabel}
           </Link>
         </div>
       </motion.div>
@@ -737,6 +741,12 @@ function ResultsOverlay({
 export default function MessRun() {
   const { identity, local } = usePlayerIdentity();
   const { isAuthenticated } = useAuth();
+  const [searchParams] = useSearchParams();
+  const returnToAdventure = searchParams.get("returnTo") === "adventure";
+  const backHref = returnToAdventure
+    ? "/play?intent=continue&adventure=1"
+    : "/play?intent=continue";
+  const backLabel = returnToAdventure ? "Adventure" : "Campus";
   const submitRun = useMutation(api.messRun.submitRun);
   const depositRun = useMutation(api.houseCupboard.depositRun);
   const serverSummary = useQuery(api.messRun.mySummary, isAuthenticated ? {} : "skip");
@@ -1055,6 +1065,8 @@ export default function MessRun() {
             depositError={depositError}
             deposited={deposited}
             onDeposit={() => void depositFood()}
+            backHref={backHref}
+            backLabel={backLabel}
           />
         )}
       </main>
@@ -1069,11 +1081,11 @@ export default function MessRun() {
       <header className="relative z-20 border-b border-[#f1ead8]/10 bg-[#0b1511]/82 backdrop-blur-xl">
         <div className="mx-auto flex h-[72px] max-w-[1280px] items-center justify-between gap-4 px-4 sm:px-7">
           <Link
-            to="/play?intent=continue"
+            to={backHref}
             className="group inline-flex items-center gap-2 font-ui text-[9px] uppercase tracking-[0.2em] text-[#b4bba9] transition hover:text-[#f1ead8]"
           >
             <ChevronLeft className="size-3.5 transition group-hover:-translate-x-0.5" />
-            Back to campus
+            {returnToAdventure ? "Back to adventure" : "Back to campus"}
           </Link>
           <div className="flex items-center gap-3">
             <span className="h-7 w-px bg-[#d7b46a]/45" />

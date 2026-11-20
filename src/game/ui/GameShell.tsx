@@ -80,7 +80,7 @@ export function GameShell({
   const containerRef = useRef<HTMLDivElement>(null);
   const onEngineReadyRef = useRef(onEngineReady);
   onEngineReadyRef.current = onEngineReady;
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const handledEntryIntent = useRef(false);
   const [store] = useState(() => {
     const save = new SaveSystem().load();
@@ -144,7 +144,8 @@ export function GameShell({
   useEffect(() => {
     if (handledEntryIntent.current || !ready || multiplayer || !engine) return;
     const intent = searchParams.get("intent");
-    if (intent !== "continue" && intent !== "tour") return;
+    const wantsAdventure = searchParams.get("adventure") === "1";
+    if (intent !== "continue" && intent !== "tour" && !wantsAdventure) return;
     if (!state.hasSave || state.screen !== "menu") return;
     handledEntryIntent.current = true;
     if (!engine.continueGame()) return;
@@ -153,8 +154,31 @@ export function GameShell({
         engine.openPlan();
         engine.choosePlan("explore");
       }, 0);
+    } else if (wantsAdventure) {
+      // Returning from a standalone mini-game opened in the Adventure menu.
+      window.setTimeout(() => engine.openAdventure(), 0);
     }
   }, [engine, multiplayer, ready, searchParams, state.hasSave, state.screen]);
+
+  // Keep the Adventure marker in the /play URL while the menu is open. This
+  // makes browser Back from MESS RUN rebuild the same Adventure screen, not
+  // the main menu, without adding a second route or game instance.
+  useEffect(() => {
+    if (!ready || multiplayer) return;
+    const hasAdventureMarker = searchParams.get("adventure") === "1";
+    if (state.screen === "adventure") {
+      if (hasAdventureMarker) return;
+      const next = new URLSearchParams(searchParams);
+      next.set("adventure", "1");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    if (hasAdventureMarker && state.screen !== "menu") {
+      const next = new URLSearchParams(searchParams);
+      next.delete("adventure");
+      setSearchParams(next, { replace: true });
+    }
+  }, [multiplayer, ready, searchParams, setSearchParams, state.screen]);
 
   const inGame =
     state.screen === "creation" ||

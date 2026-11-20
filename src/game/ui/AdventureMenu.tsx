@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
-import { ArrowLeft, ChevronRight, Clock3, DoorOpen, Eye, Flag, Moon, MoonStar, ShieldCheck, Trophy, Users, Utensils } from "lucide-react";
+import { ArrowLeft, ChevronRight, Clock3, DoorOpen, Drumstick, Eye, Flag, Footprints, Moon, MoonStar, ShieldCheck, Trophy, Users, Utensils } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import type { GameEngine } from "../core/GameEngine";
 import type { GameUIState } from "../core/types";
 import { CLASS_BUNK_DIFFICULTIES, type ClassBunkDifficulty } from "../data/classBunk";
@@ -52,8 +52,8 @@ export function AdventureMenu({
               Choose your caper.
             </h2>
             <p className="mt-2 max-w-xl font-ui text-[11px] leading-relaxed text-[#e9ddc8]/50">
-              Skip a class, sneak through the garden after dark, or run the obstacle course. Every
-              caper is optional, personal and separate from official house points.
+              Skip a class, sneak through the garden after dark, run the mess trays or take on the
+              obstacle course. Every caper is optional, personal and separate from official house points.
             </p>
           </div>
           {profile && house && (
@@ -136,6 +136,45 @@ export function AdventureMenu({
               </div>
             </div>
           </div>
+
+          <Link
+            to="/mess-run?returnTo=adventure"
+            data-testid="adventure-mess-run"
+            className="group relative block overflow-hidden border border-[#d7b46a]/40 bg-[linear-gradient(128deg,#101a12_0%,#162015_58%,#1e1a10_100%)] p-5 text-left transition hover:border-[#e8cc8e]/80 hover:bg-[#182418] sm:p-7 md:col-span-2"
+          >
+            <span className="absolute right-5 top-5 border border-[#d7b46a]/35 bg-[#d7b46a]/10 px-2 py-1 font-ui text-[8px] uppercase tracking-[0.24em] text-[#efd79f]/85">
+              PLAYABLE · MINI-GAME
+            </span>
+            <span className="flex size-11 items-center justify-center rounded-full border border-[#d7b46a]/45 text-[#efd79f]">
+              <Drumstick className="size-5" />
+            </span>
+            <h3 className="mt-5 font-display text-3xl leading-none text-[#f5ead4] sm:text-4xl">
+              MESS RUN
+            </h3>
+            <p className="mt-1.5 font-ui text-[9px] uppercase tracking-[0.22em] text-[#d9c08a]/75">
+              The great food escape
+            </p>
+            <p className="mt-4 max-w-2xl font-ui text-[12px] leading-relaxed text-[#e9ddc8]/58">
+              Run through campus carrying two food trays while escaping a teacher of your choice.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 font-ui text-[8px] uppercase tracking-[0.16em] text-[#cfe0bd]/55">
+              <span className="inline-flex items-center gap-1.5">
+                <Footprints className="size-3" /> Endless campus run
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Users className="size-3" /> Choose your chaser
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Drumstick className="size-3" /> Share food in your house
+              </span>
+            </div>
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#d7b46a]/15 pt-3 font-ui text-[8px] uppercase tracking-[0.16em] text-[#e8d4a8]/60">
+              <span>Teacher selection · four modes</span>
+              <span className="inline-flex items-center gap-1.5 text-[#efd79f] transition group-hover:text-[#f6e6bb]">
+                Open MESS RUN <ChevronRight className="size-4 transition group-hover:translate-x-1" />
+              </span>
+            </div>
+          </Link>
 
           <div
             data-testid="adventure-class-bunk"
