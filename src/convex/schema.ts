@@ -63,6 +63,29 @@ const schema = defineSchema(
       .index("by_user", ["userId"])
       .index("by_player", ["playerId"]),
 
+    // ---------------------------------------------------------------- mess run
+
+    /** Validated run records for the campus endless-runner mini-game. */
+    messRunRuns: defineTable({
+      userId: v.id("users"),
+      teacherId: v.string(),
+      mode: v.string(),
+      outcome: v.union(v.literal("caught"), v.literal("empty"), v.literal("delivered")),
+      score: v.number(),
+      distance: v.number(),
+      durationMs: v.number(),
+      foodLeft: v.number(),
+      leftTray: v.number(),
+      rightTray: v.number(),
+      coins: v.number(),
+      nearMisses: v.number(),
+      obstaclesAvoided: v.number(),
+      createdAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_score", ["userId", "score"])
+      .index("by_user_created", ["userId", "createdAt"]),
+
     // ---------------------------------------------------------------- multiplayer
 
     /** One live room per host. Codes are only readable through member-guarded queries. */

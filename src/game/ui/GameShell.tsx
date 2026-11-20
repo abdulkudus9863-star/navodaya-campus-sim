@@ -31,7 +31,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { GameEngine } from "../core/GameEngine";
 import { GameStore, useGameState } from "../core/GameStore";
 import { SaveSystem } from "../core/SaveSystem";
@@ -427,6 +427,7 @@ function MenuRow({
 }
 
 function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | null }) {
+  const navigate = useNavigate();
   const [confirmNew, setConfirmNew] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const profile = state.profile;
@@ -565,6 +566,12 @@ function MainMenu({ state, engine }: { state: GameUIState; engine: GameEngine | 
                       setShowControls((value) => !value);
                       engine?.uiClick();
                     }}
+                  />
+                  <MenuRow
+                    index={state.hasSave ? "05" : "04"}
+                    label="Mess Run"
+                    detail="New · Carry two trays, outrun a teacher"
+                    onClick={() => navigate("/mess-run")}
                   />
                 </nav>
               )}
